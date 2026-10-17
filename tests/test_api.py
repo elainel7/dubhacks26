@@ -273,13 +273,13 @@ class ApiTests(unittest.TestCase):
         self.use_conn(conn)
         response = self.client.get(
             "/users/user_1/timeline",
-            headers={"Origin": "https://example.com"},
+            headers={"Origin": "https://nohunch.club"},
         )
         self.assertEqual(response.headers["access-control-allow-origin"], "*")
         preflight = self.client.options(
             "/events",
             headers={
-                "Origin": "https://example.com",
+                "Origin": "https://nohunch.club",
                 "Access-Control-Request-Method": "POST",
                 "Access-Control-Request-Headers": "content-type",
             },
@@ -290,7 +290,8 @@ class ApiTests(unittest.TestCase):
 
     def test_dashboard_contract(self):
         html = Path("web/index.html").read_text(encoding="utf-8")
-        self.assertIn('const API_BASE = "http://127.0.0.1:8000"', html)
+        self.assertIn('const API_BASE = "https://posture-api-x1my.onrender.com"', html)
+        self.assertNotIn("posture-api-x1my.onrender.com/", html)
         self.assertLess(html.index("API_BASE"), html.index("<body>"))
         self.assertIn('value="user_1"', html)
         self.assertIn('value="user_2"', html)
