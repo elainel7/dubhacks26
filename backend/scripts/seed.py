@@ -1,4 +1,4 @@
-"""Seed fake posture data. Usage: DATABASE_URL=... python scripts/seed.py [hours=6]"""
+"""Seed fake posture data. From backend/: DATABASE_URL=... python scripts/seed.py [hours=6]"""
 import os, sys, random
 from datetime import datetime, timedelta, timezone
 import psycopg2
