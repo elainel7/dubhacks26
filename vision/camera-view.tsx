@@ -225,7 +225,9 @@ export function CameraView() {
     );
     commit(result);
     const blinks = body.blink_count === 1 ? "1 blink" : `${body.blink_count} blinks`;
-    if (!result.note) setStatus(`Sheet scored. ${blinks}, posture ${body.posture_score}.`);
+    const reset = body.blink_count > 0 ? " Timer reset." : "";
+    const lead = result.note ? `${result.note} ` : "";
+    setStatus(`${lead}Sheet: ${blinks}, posture ${body.posture_score}.${reset}`);
   }
 
   useEffect(() => {
@@ -435,7 +437,7 @@ export function CameraView() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted-foreground">Blinks / min</dt>
+                  <dt className="text-xs text-muted-foreground">Blinks, last minute</dt>
                   <dd className="mt-1 font-mono text-3xl tabular-nums">
                     {watching ? metrics.blinksPerMinute : "—"}
                   </dd>

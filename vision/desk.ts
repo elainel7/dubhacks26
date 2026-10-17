@@ -28,11 +28,12 @@ export function contactSheetPrompt(panelCount: number, durationMs: number) {
     "The person may wear glasses. Score the eyelids, not the lenses or the glare.",
     "A bright reflection on the glasses is not an open eye.",
     "Looking down is not a blink.",
-    "posture_score is an integer from 1 to 10 for the last panel only.",
-    "10 is rare: ears over the shoulders, chin slightly tucked, neck long, torso not leaning toward the screen.",
-    "7 is already poor: head forward of the shoulders, rounded upper back, or a lean toward the laptop.",
-    "4 is a clear slouch. 1 is collapsed onto the desk.",
-    "Do not give 8, 9, or 10 to someone whose head is in front of their shoulders.",
+    "The small panels are only for blinks.",
+    "posture_score is an integer from 1 to 10 for the large panel labeled POSTURE. Ignore the small panels for this score.",
+    "10 means the ear sits over the shoulder and the chin is back, not poked toward the camera.",
+    "6 or 7 means the head is forward of the shoulders, the upper back is rounded, or the face is closer to the camera than the chest.",
+    "3 or 4 means a clear slouch. 1 means collapsed.",
+    "Good posture and a slouch must get different numbers. Do not answer 7 for every sheet.",
     "If no face is visible, face_visible is false, blink_count is 0, posture_score is 5, and head and shoulders are unknown.",
     "Do not identify the person.",
   ].join(" ");
@@ -118,7 +119,7 @@ export function parseDeskContent(content: string): DeskScore | null {
   return {
     face_visible: record.face_visible,
     blink_count: Math.max(0, Math.min(4, Math.round(record.blink_count))),
-    posture_score: Math.max(1, Math.min(10, Math.round(record.posture_score) - 3)),
+    posture_score: Math.max(1, Math.min(10, Math.round(record.posture_score))),
     head: record.head as HeadState,
     shoulders: record.shoulders as ShoulderState,
   };

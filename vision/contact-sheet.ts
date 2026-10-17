@@ -24,9 +24,14 @@ export async function renderContactSheet(frames: { jpeg: string; t: number }[]) 
   const clipEndedAt = frames[frames.length - 1].t;
   const images = await Promise.all(frames.map((frame) => loadJpeg(frame.jpeg)));
   const rows = Math.ceil(frames.length / SHEET_COLS);
+  const gridWidth = SHEET_COLS * CELL_W;
+  const gridHeight = rows * (CELL_H + LABEL_H);
+  const postureW = 480;
+  const postureH = 360;
+  const gap = 16;
   const canvas = document.createElement("canvas");
-  canvas.width = SHEET_COLS * CELL_W;
-  canvas.height = rows * (CELL_H + LABEL_H);
+  canvas.width = gridWidth + gap + postureW;
+  canvas.height = Math.max(gridHeight, postureH + LABEL_H);
   const context = canvas.getContext("2d");
   if (!context) return null;
 
@@ -47,6 +52,14 @@ export async function renderContactSheet(frames: { jpeg: string; t: number }[]) 
     const seconds = ((frame.t - startedAt) / 1000).toFixed(1);
     context.fillText(`${seconds}s`, x + 4, y + CELL_H + LABEL_H / 2);
   });
+
+  const postureX = gridWidth + gap;
+  context.drawImage(images[images.length - 1], postureX, 0, postureW, postureH);
+  context.fillStyle = "#111";
+  context.fillRect(postureX, postureH, postureW, LABEL_H);
+  context.fillStyle = "#fff";
+  context.font = "bold 14px sans-serif";
+  context.fillText("POSTURE — score only this panel", postureX + 8, postureH + LABEL_H / 2);
 
   const url = canvas.toDataURL("image/jpeg", 0.75);
   const comma = url.indexOf(",");

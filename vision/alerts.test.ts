@@ -64,6 +64,15 @@ test("a blink resets the stare clock", () => {
   assert.equal(blinked.buzz, null);
   assert.equal(blinked.state.secondsSinceBlink, 0);
   assert.equal(blinked.state.blinksPerMinute, 1);
+
+  const late = applyReading(
+    initialAlertState(0),
+    reading({ blinkCount: 1, clipEndedAt: 1_000 }),
+    8_000,
+  );
+  assert.equal(late.state.secondsSinceBlink, 0);
+  assert.equal(late.state.lastBlinkAt, 8_000);
+  assert.equal(late.state.blinksPerMinute, 1);
 });
 
 test("a missing face freezes the clock and stays quiet", () => {
@@ -243,7 +252,7 @@ test("desk JSON is clamped and rejected when a field is missing", () => {
     {
       face_visible: true,
       blink_count: 0,
-      posture_score: 5,
+      posture_score: 8,
       head: "upright",
       shoulders: "level",
     },

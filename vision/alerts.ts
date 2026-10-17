@@ -147,12 +147,12 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
   }
 
   const blinked = reading.blinkCount > 0;
-  const lastBlinkAt = blinked ? reading.clipEndedAt : due.state.lastBlinkAt;
-  const secondsSinceBlink = Math.max(0, (reading.clipEndedAt - lastBlinkAt) / 1000);
+  const lastBlinkAt = blinked ? now : due.state.lastBlinkAt;
+  const secondsSinceBlink = blinked ? 0 : Math.max(0, (now - lastBlinkAt) / 1000);
   const events = blinked
-    ? [...due.state.blinkEvents, { at: reading.clipEndedAt, count: reading.blinkCount }]
+    ? [...due.state.blinkEvents, { at: now, count: reading.blinkCount }]
     : due.state.blinkEvents;
-  const { kept, blinksPerMinute } = blinksInLastMinute(events, reading.clipEndedAt);
+  const { kept, blinksPerMinute } = blinksInLastMinute(events, now);
 
   const bad = reading.postureScore <= POSTURE_BAD_AT;
   const badPostureStreak = bad ? due.state.badPostureStreak + 1 : 0;
@@ -173,7 +173,7 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
   const blinkReady =
     !reading.degraded &&
     !blinked &&
-    reading.clipEndedAt - lastBlinkAt >= BLINK_GAP_MS &&
+    now - lastBlinkAt >= BLINK_GAP_MS &&
     (next.lastBlinkAlertAt === null || now - next.lastBlinkAlertAt >= COOLDOWN_MS);
 
   const postureReady =
@@ -182,7 +182,7 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
 
   if (blinkReady) {
     next = { ...next, lastBlinkAlertAt: now };
-    return { state: next, buzz: "B", note: "Blink." };
+    return { state: next, buzz: "B", note: "You've been staring." };
   }
 
   if (postureReady) {
