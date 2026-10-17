@@ -4,9 +4,6 @@ import {
   type DeskScore,
 } from "@/lib/desk";
 
-export const runtime = "nodejs";
-export const maxDuration = 30;
-
 const PERCEPTRON_URL = "https://api.perceptron.inc/v1/chat/completions";
 const MAX_FRAMES = 12;
 const MAX_FRAME_CHARS = 250_000;

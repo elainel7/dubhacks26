@@ -71,7 +71,7 @@ export function DeskMonitor() {
   const bufferRef = useRef<Capture[]>([]);
   const lastSentRef = useRef(0);
   const inFlightRef = useRef(false);
-  const stateRef = useRef<AlertState>(initialAlertState(Date.now()));
+  const stateRef = useRef<AlertState>(initialAlertState(0));
   const watchingRef = useRef(false);
   const simulateRef = useRef(false);
   const sceneRef = useRef<Scene>("blinking");
@@ -455,12 +455,14 @@ export function DeskMonitor() {
                 <div>
                   <dt className="text-xs text-muted-foreground">Seconds since blink</dt>
                   <dd className="mt-1 font-mono text-3xl tabular-nums">
-                    {formatSeconds(metrics.secondsSinceBlink)}
+                    {watching ? formatSeconds(metrics.secondsSinceBlink) : "—"}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Blinks / min</dt>
-                  <dd className="mt-1 font-mono text-3xl tabular-nums">{metrics.blinksPerMinute}</dd>
+                  <dd className="mt-1 font-mono text-3xl tabular-nums">
+                    {watching ? metrics.blinksPerMinute : "—"}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Posture 1–10</dt>
