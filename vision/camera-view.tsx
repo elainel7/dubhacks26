@@ -14,7 +14,8 @@ import {
   type StepResult,
 } from "@/vision/alerts";
 import { renderContactSheet, SHEET_MIN_SPAN_MS, SHEET_PANELS, SHEET_WINDOW_MS } from "@/vision/contact-sheet";
-import { SPEND_CAP_USD, tokenCost } from "@/vision/desk";
+import { SPEND_CAP_USD, tokenCost, type DeskScore } from "@/vision/desk";
+import { postureEventFromScore, SAVED_NOTE, UNSAVED_NOTE } from "@/vision/events";
 import { selectWindow } from "@/vision/frames";
 import { readStoredDeviceId } from "@/lib/device-id";
 import { serialAvailable, connectUno, type UnoLink } from "@/lib/serial";
@@ -50,7 +51,7 @@ export function CameraView() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [status, setStatus] = useState("Allow the camera. Each sheet is one second of video, about 30 frames.");
-  const [metrics, setMetrics] = useState<AlertState>(stateRef.current);
+  const [metrics, setMetrics] = useState<AlertState>(() => initialAlertState(0));
   const [spend, setSpend] = useState(0);
   const [serialLabel, setSerialLabel] = useState(
     serialAvailable() ? "Uno not connected" : "Web Serial needs Chrome or Edge",
@@ -74,12 +75,12 @@ export function CameraView() {
     };
   }, []);
 
-  function commit(result: StepResult) {
+  function commit(result: StepResult, now: number) {
     stateRef.current = result.state;
     setMetrics(result.state);
     if (result.note) setStatus(result.note);
     if (result.state.phase === "break" && result.state.breakUntil) {
-      setBreakLeft(Math.max(0, Math.ceil((result.state.breakUntil - Date.now()) / 1000)));
+      setBreakLeft(Math.max(0, Math.ceil((result.state.breakUntil - now) / 1000)));
     } else {
       setBreakLeft(null);
     }
@@ -237,6 +238,7 @@ export function CameraView() {
       head: body.head,
       shoulders: body.shoulders,
     };
+    const now = Date.now();
     const result = applyReading(
       stateRef.current,
       {
@@ -248,11 +250,12 @@ export function CameraView() {
         degraded: false,
         clipEndedAt: sheet.clipEndedAt,
       },
-      Date.now(),
+      now,
     );
-    commit(result);
+    commit(result, now);
     const blinks = body.blink_count === 1 ? "1 blink" : `${body.blink_count} blinks`;
     if (!result.note) setStatus(`Sheet scored. ${blinks}, posture ${body.posture_score}.`);
+    void persistScore(scored);
   }
 
   useEffect(() => {
@@ -321,16 +324,17 @@ export function CameraView() {
 
     const clock = window.setInterval(() => {
       if (!watchingRef.current) return;
-      const result = tick(stateRef.current, Date.now());
-      if (result.buzz || result.state !== stateRef.current) commit(result);
+      const now = Date.now();
+      const result = tick(stateRef.current, now);
+      if (result.buzz || result.state !== stateRef.current) commit(result, now);
       if (stateRef.current.phase === "break" && stateRef.current.breakUntil) {
-        setBreakLeft(Math.max(0, Math.ceil((stateRef.current.breakUntil - Date.now()) / 1000)));
+        setBreakLeft(Math.max(0, Math.ceil((stateRef.current.breakUntil - now) / 1000)));
       }
     }, 250);
 
     return () => {
       window.clearInterval(captureTimer);
-      videoRef.current?.cancelVideoFrameCallback?.(frameHandle);
+      video?.cancelVideoFrameCallback?.(frameHandle);
       window.clearInterval(pumpTimer);
       window.clearInterval(clock);
     };
@@ -397,31 +401,35 @@ export function CameraView() {
           ? "Live"
           : "Idle";
 
+  const postureTone =
+    metrics.postureScore === null ? "text-foreground" : metrics.postureScore >= 6 ? "text-good" : "text-bad";
+
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
+      <header className="flex max-w-2xl flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Camera</h1>
+          <h1 className="text-4xl text-foreground sm:text-5xl">Camera</h1>
           <Badge variant={watching ? "default" : "outline"}>{phaseLabel}</Badge>
           {unoReady ? <Badge variant="secondary">Uno</Badge> : null}
         </div>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          This page is only so you can see the webcam. Frames are sent to Perceptron and are not stored.
-          A visible face&apos;s score is saved for the device id you opened. A stare or a slouch beeps on
-          this computer until the Arduino is plugged in.
+        <p className="text-base leading-relaxed text-muted-foreground">
+          Perch scores blinks and posture from this webcam. Frames go to Perceptron and are not stored.
+          A visible face is saved for the device id you opened. A stare or a slouch beeps here until the
+          Arduino is plugged in.
         </p>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)]">
-        <Card>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.85fr)]">
+        <Card className="bg-card/95">
           <CardHeader>
-            <CardTitle>Camera</CardTitle>
-            <CardDescription>
-              About 30 frames from one second go into one JPEG, so a blink covers several panels. Frames are not stored.
+            <CardTitle className="font-heading text-2xl">Preview</CardTitle>
+            <CardDescription className="text-sm leading-relaxed">
+              About 30 frames from one second go into one JPEG, so a blink covers several panels. Frames
+              are not stored.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <div className="relative overflow-hidden rounded-lg bg-muted aspect-[4/3]">
+            <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10">
               <video
                 ref={videoRef}
                 className="h-full w-full -scale-x-100 object-cover"
@@ -430,25 +438,32 @@ export function CameraView() {
                 autoPlay
               />
               {!cameraOn ? (
-                <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                  The preview appears after you start watching and allow the camera.
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+                  <p className="font-heading text-2xl text-foreground">Allow the camera</p>
+                  <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
+                    The preview stays on this page. Posture history lives with the device id.
+                  </p>
                 </div>
               ) : null}
             </div>
             <canvas ref={canvasRef} width={FRAME_W} height={FRAME_H} className="hidden" />
-            {cameraError ? <p className="text-sm text-destructive">{cameraError}</p> : null}
-            <p className="text-sm" aria-live="polite">
+            {cameraError ? (
+              <p role="alert" className="text-sm font-medium text-bad">
+                {cameraError}
+              </p>
+            ) : null}
+            <p className="rounded-xl bg-muted px-3 py-2 text-sm leading-relaxed" aria-live="polite">
               {status}
             </p>
-            {saveNote ? <p className="text-xs text-muted-foreground">{saveNote}</p> : null}
+            {saveNote ? <p className="text-sm text-muted-foreground">{saveNote}</p> : null}
           </CardContent>
         </Card>
 
         <div className="flex flex-col gap-4">
-          <Card>
+          <Card className="bg-card/95">
             <CardHeader>
-              <CardTitle>Right now</CardTitle>
-              <CardDescription>
+              <CardTitle className="font-heading text-2xl">Right now</CardTitle>
+              <CardDescription className="leading-relaxed">
                 {latency === null ? "No scored window yet." : `Last Mk1.5 call ${latency} ms.`}
                 {metrics.head && metrics.phase === "live"
                   ? ` Head ${metrics.head}, shoulders ${metrics.shoulders}.`
@@ -456,44 +471,44 @@ export function CameraView() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <dl className="grid grid-cols-3 gap-3">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Seconds since blink</dt>
-                  <dd className="mt-1 font-mono text-3xl tabular-nums">
+              <dl className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl bg-muted px-2 py-3 sm:px-3">
+                  <dt className="text-xs font-semibold text-muted-foreground">Seconds since blink</dt>
+                  <dd className="mt-1 font-heading text-3xl tabular-nums">
                     {watching ? formatSeconds(metrics.secondsSinceBlink) : "—"}
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Blinks / min</dt>
-                  <dd className="mt-1 font-mono text-3xl tabular-nums">
+                <div className="rounded-xl bg-muted px-2 py-3 sm:px-3">
+                  <dt className="text-xs font-semibold text-muted-foreground">Blinks / min</dt>
+                  <dd className="mt-1 font-heading text-3xl tabular-nums">
                     {watching ? metrics.blinksPerMinute : "—"}
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Posture 1–10</dt>
-                  <dd className="mt-1 font-mono text-3xl tabular-nums">{posture}</dd>
+                <div className="rounded-xl bg-muted px-2 py-3 sm:px-3">
+                  <dt className="text-xs font-semibold text-muted-foreground">Posture 1–10</dt>
+                  <dd className={`mt-1 font-heading text-3xl tabular-nums ${postureTone}`}>{posture}</dd>
                 </div>
               </dl>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="bg-card/95">
             <CardHeader>
-              <CardTitle>Controls</CardTitle>
+              <CardTitle className="font-heading text-2xl">Controls</CardTitle>
               <CardDescription>{serialLabel}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={() => void toggleWatching()}>
+                <Button type="button" className="h-11 px-4" onClick={() => void toggleWatching()}>
                   {watching ? "Stop camera" : "Allow the camera"}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => void onConnect()}>
+                <Button type="button" variant="outline" className="h-11 px-4" onClick={() => void onConnect()}>
                   Connect Uno
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Perceptron spend this session: ${spend.toFixed(3)} of ${SPEND_CAP_USD.toFixed(2)}.
-                Beeps play here on their own. Connect Uno only when the board is plugged in.
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Perceptron spend this session: ${spend.toFixed(3)} of ${SPEND_CAP_USD.toFixed(2)}. Beeps
+                play here on their own. Connect Uno only when the board is plugged in.
               </p>
             </CardContent>
           </Card>
