@@ -1,12 +1,12 @@
-export const SHEET_COLS = 4;
-export const SHEET_ROWS = 2;
-export const SHEET_PANELS = SHEET_COLS * SHEET_ROWS;
-export const SHEET_EVERY_MS = 8_000;
-export const SHEET_MIN_SPAN_MS = 7_000;
+export const SHEET_COLS = 6;
+export const SHEET_PANELS = 30;
+/** One sheet is about one second of video, so a blink covers several panels. */
+export const SHEET_MIN_SPAN_MS = 800;
+export const SHEET_WINDOW_MS = 1_000;
 
 const CELL_W = 160;
 const CELL_H = 120;
-const LABEL_H = 16;
+const LABEL_H = 14;
 
 function loadJpeg(jpegBase64: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -23,9 +23,10 @@ export async function renderContactSheet(frames: { jpeg: string; t: number }[]) 
   const startedAt = frames[0].t;
   const clipEndedAt = frames[frames.length - 1].t;
   const images = await Promise.all(frames.map((frame) => loadJpeg(frame.jpeg)));
+  const rows = Math.ceil(frames.length / SHEET_COLS);
   const canvas = document.createElement("canvas");
   canvas.width = SHEET_COLS * CELL_W;
-  canvas.height = SHEET_ROWS * (CELL_H + LABEL_H);
+  canvas.height = rows * (CELL_H + LABEL_H);
   const context = canvas.getContext("2d");
   if (!context) return null;
 
@@ -47,7 +48,7 @@ export async function renderContactSheet(frames: { jpeg: string; t: number }[]) 
     context.fillText(`${seconds}s`, x + 4, y + CELL_H + LABEL_H / 2);
   });
 
-  const url = canvas.toDataURL("image/jpeg", 0.6);
+  const url = canvas.toDataURL("image/jpeg", 0.75);
   const comma = url.indexOf(",");
   if (comma < 0) return null;
   return { jpegBase64: url.slice(comma + 1), startedAt, clipEndedAt };

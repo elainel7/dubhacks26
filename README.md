@@ -43,9 +43,8 @@ Open [http://localhost:43123](http://localhost:43123) in Chrome or Edge.
 
 1. The first page asks for the buzzer's device id and opens the numbers for that id.
 2. **Camera** in the nav shows the webcam. Click **Allow the camera**. A stare of about 8 seconds beeps twice. Three low posture scores in a row beep three times. A 20-minute stretch starts a 20-second break beep. There is no fake score mode.
-3. Perceptron code lives in `vision/`. The camera packs 8 panels into one contact sheet and sends that one image about every 8 seconds. Frames are not stored or shown on the numbers page.
-4. Each successful score with a visible face is saved for that device id. A posture score of 6 or higher is stored as `good`. A lower score, including a head leaned forward, is stored as `slouching`. The camera page shows a small "saved to Tiger Data" or "couldn't save" line. A failed save does not stop the beeps. The device chart reads `posture_per_minute`, which refreshes about once a minute, so a new point can take a minute to appear. A hidden face is not saved.
-5. Flash `arduino/perch_buzzer/perch_buzzer.ino` when the Uno is here. Piezo + goes to pin 8, piezo − to GND. **Connect Uno** on the camera page sends the same beeps to the board.
+3. Perceptron code lives in `vision/`. The camera packs about 30 frames from one second into one contact sheet. A posture score of 6 or below is already poor. Frames are not stored or shown on the numbers page.
+4. Flash `arduino/perch_buzzer/perch_buzzer.ino` when the Uno is here. Piezo + goes to pin 8, piezo − to GND. **Connect Uno** on the camera page sends the same beeps to the board.
 
 Scoring stops automatically around $3 of Mk1.5 usage (input $0.15 / million tokens, output $1.50 / million). Restart the page to reset the counter.
 

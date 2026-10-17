@@ -13,9 +13,8 @@ import {
   type Reading,
   type StepResult,
 } from "@/vision/alerts";
-import { renderContactSheet, SHEET_MIN_SPAN_MS, SHEET_PANELS } from "@/vision/contact-sheet";
-import { SPEND_CAP_USD, tokenCost, type DeskScore } from "@/vision/desk";
-import { postureEventFromScore, SAVED_NOTE, UNSAVED_NOTE } from "@/vision/events";
+import { renderContactSheet, SHEET_MIN_SPAN_MS, SHEET_PANELS, SHEET_WINDOW_MS } from "@/vision/contact-sheet";
+import { SPEND_CAP_USD, tokenCost } from "@/vision/desk";
 import { selectWindow } from "@/vision/frames";
 import { readStoredDeviceId } from "@/lib/device-id";
 import { serialAvailable, connectUno, type UnoLink } from "@/lib/serial";
@@ -50,7 +49,7 @@ export function CameraView() {
   const [watching, setWatching] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
-  const [status, setStatus] = useState("Allow the camera. One contact sheet goes out every 8 seconds.");
+  const [status, setStatus] = useState("Allow the camera. Each sheet is one second of video, about 30 frames.");
   const [metrics, setMetrics] = useState<AlertState>(stateRef.current);
   const [spend, setSpend] = useState(0);
   const [serialLabel, setSerialLabel] = useState(
@@ -116,7 +115,12 @@ export function CameraView() {
       const stream = await Promise.race([
         navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+          video: {
+            facingMode: "user",
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 30, max: 30 },
+          },
         }),
         new Promise<MediaStream>((_, reject) => {
           window.setTimeout(() => reject(new Error("timeout")), 8_000);
@@ -247,24 +251,41 @@ export function CameraView() {
       Date.now(),
     );
     commit(result);
-    if (!result.note) setStatus("Sheet scored. No reminder.");
-    void persistScore(scored);
+    const blinks = body.blink_count === 1 ? "1 blink" : `${body.blink_count} blinks`;
+    if (!result.note) setStatus(`Sheet scored. ${blinks}, posture ${body.posture_score}.`);
   }
 
   useEffect(() => {
     if (!watching) return;
 
-    const captureTimer = window.setInterval(() => {
-      if (!watchingRef.current) return;
-      if (stateRef.current.phase === "break") return;
+    let lastVideoTime = -1;
+    let frameHandle = 0;
+    const pushFrame = () => {
+      if (!watchingRef.current || stateRef.current.phase === "break") return;
+      const video = videoRef.current;
+      if (video && video.currentTime === lastVideoTime) return;
+      if (video) lastVideoTime = video.currentTime;
       const jpeg = grab();
       if (!jpeg) return;
       bufferRef.current.push({ jpeg, t: Date.now() });
-      const cutoff = Date.now() - 15_000;
-      if (bufferRef.current.length > 80) {
+      const cutoff = Date.now() - 2_000;
+      if (bufferRef.current.length > 45) {
         bufferRef.current = bufferRef.current.filter((frame) => frame.t >= cutoff);
       }
-    }, 250);
+    };
+    const onVideoFrame = () => {
+      pushFrame();
+      const video = videoRef.current;
+      if (!watchingRef.current || !video?.requestVideoFrameCallback) return;
+      frameHandle = video.requestVideoFrameCallback(onVideoFrame);
+    };
+    const video = videoRef.current;
+    let captureTimer = 0;
+    if (video?.requestVideoFrameCallback) {
+      frameHandle = video.requestVideoFrameCallback(onVideoFrame);
+    } else {
+      captureTimer = window.setInterval(pushFrame, 33);
+    }
 
     const pumpTimer = window.setInterval(() => {
       void (async () => {
@@ -274,12 +295,14 @@ export function CameraView() {
         if (Date.now() < holdUntilRef.current) return;
 
         const fresh = bufferRef.current.filter((frame) => frame.t > lastSentRef.current);
-        if (fresh.length < 2) return;
+        if (fresh.length < 12) return;
         const span = fresh[fresh.length - 1].t - fresh[0].t;
         if (span < SHEET_MIN_SPAN_MS) return;
+        const windowStart = fresh[fresh.length - 1].t - SHEET_WINDOW_MS;
+        const recent = fresh.filter((frame) => frame.t >= windowStart);
 
         const selected = selectWindow(
-          fresh.map((frame) => ({ ...frame, timestampMs: frame.t })),
+          recent.map((frame) => ({ ...frame, timestampMs: frame.t })),
           SHEET_PANELS,
         );
         lastSentRef.current = fresh[fresh.length - 1].t;
@@ -307,6 +330,7 @@ export function CameraView() {
 
     return () => {
       window.clearInterval(captureTimer);
+      videoRef.current?.cancelVideoFrameCallback?.(frameHandle);
       window.clearInterval(pumpTimer);
       window.clearInterval(clock);
     };
@@ -341,7 +365,7 @@ export function CameraView() {
     lastSentRef.current = now;
     watchingRef.current = true;
     setWatching(true);
-    setStatus("Watching. The blink timer runs now. The first sheet goes out in about 8 seconds.");
+    setStatus("Watching. The first sheet is about one second of frames.");
   }
 
   async function onConnect() {
@@ -393,7 +417,7 @@ export function CameraView() {
           <CardHeader>
             <CardTitle>Camera</CardTitle>
             <CardDescription>
-              Eight panels are packed into one JPEG about every 8 seconds. That single image is the only Perceptron request. Frames are not stored.
+              About 30 frames from one second go into one JPEG, so a blink covers several panels. Frames are not stored.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
