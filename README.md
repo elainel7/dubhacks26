@@ -70,3 +70,9 @@ python -m http.server 8080 --directory web
 ```
 
 Then open `http://127.0.0.1:8080`.
+
+## Deploy
+
+`render.yaml` is a Render blueprint for a free Python web service. Create the Blueprint from this repo in the Render dashboard and set `DATABASE_URL` when prompted. That variable is `sync: false`, so the connection string stays in the dashboard and is not stored in the repo.
+
+After the service is up, set `API_BASE` at the top of `web/index.html` to the service's https URL, then upload `web/` to GoDaddy.
