@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useSyncExternalStore } from "react";
-
-const KEY = "perch-device";
+import { useSyncExternalStore, type ReactNode } from "react";
+import { BrandMark } from "@/components/brand-mark";
+import { DEVICE_STORAGE_KEY } from "@/lib/device-id";
+import { cn } from "@/lib/utils";
 
 function subscribe(onStoreChange: () => void) {
   window.addEventListener("perch-device", onStoreChange);
@@ -11,34 +12,64 @@ function subscribe(onStoreChange: () => void) {
 }
 
 function snapshot() {
-  return sessionStorage.getItem(KEY);
+  return sessionStorage.getItem(DEVICE_STORAGE_KEY);
 }
 
 function serverSnapshot() {
   return null;
 }
 
-export function rememberDevice(id: string) {
-  sessionStorage.setItem(KEY, id);
+export function rememberDevice(deviceId: string) {
+  sessionStorage.setItem(DEVICE_STORAGE_KEY, deviceId);
   window.dispatchEvent(new Event("perch-device"));
 }
 
-export function SiteNav() {
-  const uuid = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
-  const numbers = uuid ? `/device/${encodeURIComponent(uuid)}` : "/";
+function NavLink({
+  href,
+  current,
+  children,
+}: {
+  href: string;
+  current: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={current ? "page" : undefined}
+      className={cn(
+        "rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        current
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:bg-card hover:text-foreground",
+      )}
+    >
+      {children}
+    </Link>
+  );
+}
+
+export function SiteNav({ current }: { current: "device" | "camera" }) {
+  const deviceId = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
+  const deviceHref = deviceId ? `/device/${encodeURIComponent(deviceId)}` : "/";
+  const onCamera = current === "camera";
 
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3">
-      <Link href="/" className="text-lg font-semibold tracking-tight">
-        Perch
+    <header className="flex flex-wrap items-center justify-between gap-4">
+      <Link
+        href="/"
+        className="flex items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+      >
+        <BrandMark />
+        <span className="font-heading text-2xl leading-none text-foreground">Perch</span>
       </Link>
-      <nav className="flex items-center gap-4 text-sm">
-        <Link href={numbers} className="text-muted-foreground hover:text-foreground">
-          Numbers
-        </Link>
-        <Link href="/vision" className="text-muted-foreground hover:text-foreground">
+      <nav aria-label="Primary" className="flex items-center gap-1 rounded-full bg-secondary/80 p-1">
+        <NavLink href={deviceHref} current={!onCamera}>
+          Device
+        </NavLink>
+        <NavLink href="/camera" current={onCamera}>
           Camera
-        </Link>
+        </NavLink>
       </nav>
     </header>
   );

@@ -14,8 +14,10 @@ import {
   type StepResult,
 } from "@/vision/alerts";
 import { renderContactSheet, SHEET_MIN_SPAN_MS, SHEET_PANELS, SHEET_WINDOW_MS } from "@/vision/contact-sheet";
-import { SPEND_CAP_USD, tokenCost } from "@/vision/desk";
+import { SPEND_CAP_USD, tokenCost, type DeskScore } from "@/vision/desk";
+import { postureEventFromScore, SAVED_NOTE, UNSAVED_NOTE } from "@/vision/events";
 import { selectWindow } from "@/vision/frames";
+import { readStoredDeviceId } from "@/lib/device-id";
 import { serialAvailable, connectUno, type UnoLink } from "@/lib/serial";
 import { playBuzz } from "@/lib/sound";
 
@@ -43,6 +45,7 @@ export function CameraView() {
   const serialRef = useRef<UnoLink | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const buzzLockRef = useRef(Promise.resolve());
+  const aliveRef = useRef(true);
 
   const [watching, setWatching] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -61,25 +64,28 @@ export function CameraView() {
   const [latency, setLatency] = useState<number | null>(null);
   const [sheets, setSheets] = useState<{ url: string; panels: number; at: number }[]>([]);
   const [breakLeft, setBreakLeft] = useState<number | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
 
   useEffect(() => {
     watchingRef.current = watching;
   }, [watching]);
 
   useEffect(() => {
+    aliveRef.current = true;
     return () => {
+      aliveRef.current = false;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       void serialRef.current?.close();
       void audioRef.current?.close();
     };
   }, []);
 
-  function commit(result: StepResult) {
+  function commit(result: StepResult, now: number) {
     stateRef.current = result.state;
     setMetrics(result.state);
     if (result.note) setStatus(result.note);
     if (result.state.phase === "break" && result.state.breakUntil) {
-      setBreakLeft(Math.max(0, Math.ceil((result.state.breakUntil - Date.now()) / 1000)));
+      setBreakLeft(Math.max(0, Math.ceil((result.state.breakUntil - now) / 1000)));
     } else {
       setBreakLeft(null);
     }
@@ -153,6 +159,25 @@ export function CameraView() {
     return comma >= 0 ? url.slice(comma + 1) : null;
   }
 
+  async function persistScore(score: DeskScore) {
+    try {
+      const event = postureEventFromScore(score, readStoredDeviceId(window.sessionStorage));
+      if (!event) {
+        if (score.face_visible && aliveRef.current) setSaveNote(UNSAVED_NOTE);
+        return;
+      }
+      const response = await fetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(event),
+      });
+      if (!aliveRef.current) return;
+      setSaveNote(response.ok ? SAVED_NOTE : UNSAVED_NOTE);
+    } catch {
+      if (aliveRef.current) setSaveNote(UNSAVED_NOTE);
+    }
+  }
+
   async function scoreSheet(frames: Capture[]) {
     const sheet = await renderContactSheet(frames);
     if (!sheet) {
@@ -214,20 +239,28 @@ export function CameraView() {
       return;
     }
 
+    const scored: DeskScore = {
+      face_visible: body.face_visible,
+      blink_count: body.blink_count,
+      posture_score: body.posture_score,
+      head: body.head,
+      shoulders: body.shoulders,
+    };
+    const now = Date.now();
     const result = applyReading(
       stateRef.current,
       {
-        faceVisible: body.face_visible,
-        blinkCount: body.blink_count,
-        postureScore: body.posture_score,
-        head: body.head,
-        shoulders: body.shoulders,
+        faceVisible: scored.face_visible,
+        blinkCount: scored.blink_count,
+        postureScore: scored.posture_score,
+        head: scored.head,
+        shoulders: scored.shoulders,
         degraded: false,
         clipEndedAt: sheet.clipEndedAt,
       },
-      Date.now(),
+      now,
     );
-    commit(result);
+    commit(result, now);
     const blinks = body.blink_count === 1 ? "1 blink" : `${body.blink_count} blinks`;
     const reset = body.blink_count > 0 ? " Timer reset." : "";
     const lead = result.note ? `${result.note} ` : "";
@@ -300,16 +333,17 @@ export function CameraView() {
 
     const clock = window.setInterval(() => {
       if (!watchingRef.current) return;
-      const result = tick(stateRef.current, Date.now());
-      if (result.buzz || result.state !== stateRef.current) commit(result);
+      const now = Date.now();
+      const result = tick(stateRef.current, now);
+      if (result.buzz || result.state !== stateRef.current) commit(result, now);
       if (stateRef.current.phase === "break" && stateRef.current.breakUntil) {
-        setBreakLeft(Math.max(0, Math.ceil((stateRef.current.breakUntil - Date.now()) / 1000)));
+        setBreakLeft(Math.max(0, Math.ceil((stateRef.current.breakUntil - now) / 1000)));
       }
     }, 250);
 
     return () => {
       window.clearInterval(captureTimer);
-      videoRef.current?.cancelVideoFrameCallback?.(frameHandle);
+      video?.cancelVideoFrameCallback?.(frameHandle);
       window.clearInterval(pumpTimer);
       window.clearInterval(clock);
     };
@@ -376,22 +410,26 @@ export function CameraView() {
           ? "Live"
           : "Idle";
 
+  const postureTone =
+    metrics.postureScore === null ? "text-foreground" : metrics.postureScore >= 6 ? "text-good" : "text-bad";
+
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
+      <header className="flex max-w-2xl flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Camera</h1>
+          <h1 className="text-4xl text-foreground sm:text-5xl">Camera</h1>
           <Badge variant={watching ? "default" : "outline"}>{phaseLabel}</Badge>
           {unoReady ? <Badge variant="secondary">Uno</Badge> : null}
         </div>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          This page is only so you can see the webcam. Frames are sent to Perceptron and are not stored.
-          A stare or a slouch beeps on this computer until the Arduino is plugged in.
+        <p className="text-base leading-relaxed text-muted-foreground">
+          Perch scores blinks and posture from this webcam. Frames go to Perceptron and are not stored.
+          A visible face is saved for the device id you opened. A stare or a slouch beeps here until the
+          Arduino is plugged in.
         </p>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)]">
-        <Card>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.85fr)]">
+        <Card className="bg-card/95">
           <CardHeader>
             <CardTitle>Camera</CardTitle>
             <CardDescription>
@@ -399,7 +437,7 @@ export function CameraView() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <div className="relative overflow-hidden rounded-lg bg-muted aspect-[4/3]">
+            <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-muted ring-1 ring-foreground/10">
               <video
                 ref={videoRef}
                 className="h-full w-full -scale-x-100 object-cover"
@@ -408,41 +446,32 @@ export function CameraView() {
                 autoPlay
               />
               {!cameraOn ? (
-                <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                  The preview appears after you start watching and allow the camera.
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+                  <p className="font-heading text-2xl text-foreground">Allow the camera</p>
+                  <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
+                    The preview stays on this page. Posture history lives with the device id.
+                  </p>
                 </div>
               ) : null}
             </div>
             <canvas ref={canvasRef} width={FRAME_W} height={FRAME_H} className="hidden" />
-            {sheets.length > 0 ? (
-              <div className="flex flex-col gap-3">
-                <p className="text-xs text-muted-foreground">
-                  Each image below is a contact sheet that was just sent. Newest first. This is exactly what Perceptron scores, and it is not mirrored.
-                </p>
-                {sheets.map((sheet) => (
-                  <figure key={sheet.at} className="flex flex-col gap-1">
-                    <figcaption className="text-xs text-muted-foreground">
-                      {new Date(sheet.at).toLocaleTimeString()} · {sheet.panels} panels
-                    </figcaption>
-                    {/* Local data URLs of the exact JPEG sent to Perceptron. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={sheet.url} alt="Contact sheet sent to Perceptron" className="w-full rounded-lg bg-muted" />
-                  </figure>
-                ))}
-              </div>
+            {cameraError ? (
+              <p role="alert" className="text-sm font-medium text-bad">
+                {cameraError}
+              </p>
             ) : null}
-            {cameraError ? <p className="text-sm text-destructive">{cameraError}</p> : null}
-            <p className="text-sm" aria-live="polite">
+            <p className="rounded-xl bg-muted px-3 py-2 text-sm leading-relaxed" aria-live="polite">
               {status}
             </p>
+            {saveNote ? <p className="text-sm text-muted-foreground">{saveNote}</p> : null}
           </CardContent>
         </Card>
 
         <div className="flex flex-col gap-4">
-          <Card>
+          <Card className="bg-card/95">
             <CardHeader>
-              <CardTitle>Right now</CardTitle>
-              <CardDescription>
+              <CardTitle className="font-heading text-2xl">Right now</CardTitle>
+              <CardDescription className="leading-relaxed">
                 {latency === null ? "No scored window yet." : `Last Mk1.5 call ${latency} ms.`}
                 {metrics.head && metrics.phase === "live"
                   ? ` Head ${metrics.head}, shoulders ${metrics.shoulders}.`
@@ -450,10 +479,10 @@ export function CameraView() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <dl className="grid grid-cols-3 gap-3">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Seconds since blink</dt>
-                  <dd className="mt-1 font-mono text-3xl tabular-nums">
+              <dl className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl bg-muted px-2 py-3 sm:px-3">
+                  <dt className="text-xs font-semibold text-muted-foreground">Seconds since blink</dt>
+                  <dd className="mt-1 font-heading text-3xl tabular-nums">
                     {watching ? formatSeconds(metrics.secondsSinceBlink) : "—"}
                   </dd>
                 </div>
@@ -471,23 +500,23 @@ export function CameraView() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="bg-card/95">
             <CardHeader>
-              <CardTitle>Controls</CardTitle>
+              <CardTitle className="font-heading text-2xl">Controls</CardTitle>
               <CardDescription>{serialLabel}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={() => void toggleWatching()}>
+                <Button type="button" className="h-11 px-4" onClick={() => void toggleWatching()}>
                   {watching ? "Stop camera" : "Allow the camera"}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => void onConnect()}>
+                <Button type="button" variant="outline" className="h-11 px-4" onClick={() => void onConnect()}>
                   Connect Uno
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Perceptron spend this session: ${spend.toFixed(3)} of ${SPEND_CAP_USD.toFixed(2)}.
-                Beeps play here on their own. Connect Uno only when the board is plugged in.
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Perceptron spend this session: ${spend.toFixed(3)} of ${SPEND_CAP_USD.toFixed(2)}. Beeps
+                play here on their own. Connect Uno only when the board is plugged in.
               </p>
             </CardContent>
           </Card>
