@@ -547,7 +547,7 @@ A new event lands in `posture_events` immediately. It shows up in `posture_per_m
 
 ## Dashboard
 
-`web/index.html` is a single static page: a user selector (`user_1`, `user_2`), good-vs-bad chart, and summary stats. Chart.js is loaded from a CDN, so there is no build step. Upload the contents of `web/` to the GoDaddy static host.
+`web/index.html` is a single static page: a user selector (`user_1`, `user_2`), good-vs-bad chart, and summary stats. Chart.js is loaded from a CDN, so there is no build step.
 
 `API_BASE` at the top of `web/index.html` is the live API, with no trailing slash:
 
@@ -567,6 +567,6 @@ Then open `http://127.0.0.1:8080`.
 
 ## Deploy
 
-The API is live at https://posture-api-x1my.onrender.com. `API_BASE` at the top of `web/index.html` is that URL with no trailing slash. Upload `web/` to GoDaddy. CORS allows any origin, so https://nohunch.club can call the API.
+The API is live at https://posture-api-x1my.onrender.com. `API_BASE` is that URL with no trailing slash. Porkbun Static Hosting publishes the repo root to nohunch.club on each push to main, so the root `index.html` is the page that gets published. Keep it identical to `web/index.html`. CORS allows any origin, so https://nohunch.club can call the API.
 
 `render.yaml` is a Render blueprint for a free Python web service. `DATABASE_URL` is `sync: false`: set it in the Render dashboard. It is not stored in the repo.
