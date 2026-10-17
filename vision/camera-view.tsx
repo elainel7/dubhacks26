@@ -47,7 +47,7 @@ export function CameraView() {
   const [watching, setWatching] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
-  const [status, setStatus] = useState("Allow the camera. Each sheet is one second of video, about 30 frames.");
+  const [status, setStatus] = useState("Allow the camera. Each sheet is every frame from about half a second.");
   const [metrics, setMetrics] = useState<AlertState>(stateRef.current);
   const [spend, setSpend] = useState(0);
   const serialReady = useSyncExternalStore(
@@ -118,7 +118,7 @@ export function CameraView() {
             facingMode: "user",
             width: { ideal: 640 },
             height: { ideal: 480 },
-            frameRate: { ideal: 30, max: 30 },
+            frameRate: { ideal: 60 },
           },
         }),
         new Promise<MediaStream>((_, reject) => {
@@ -241,8 +241,8 @@ export function CameraView() {
       const jpeg = grab();
       if (!jpeg) return;
       bufferRef.current.push({ jpeg, t: Date.now() });
-      const cutoff = Date.now() - 2_000;
-      if (bufferRef.current.length > 45) {
+      const cutoff = Date.now() - 1_000;
+      if (bufferRef.current.length > 80) {
         bufferRef.current = bufferRef.current.filter((frame) => frame.t >= cutoff);
       }
     };
@@ -268,7 +268,7 @@ export function CameraView() {
         if (Date.now() < holdUntilRef.current) return;
 
         const fresh = bufferRef.current.filter((frame) => frame.t > lastSentRef.current);
-        if (fresh.length < 12) return;
+        if (fresh.length < 8) return;
         const span = fresh[fresh.length - 1].t - fresh[0].t;
         if (span < SHEET_MIN_SPAN_MS) return;
         const windowStart = fresh[fresh.length - 1].t - SHEET_WINDOW_MS;
@@ -338,7 +338,7 @@ export function CameraView() {
     lastSentRef.current = now;
     watchingRef.current = true;
     setWatching(true);
-    setStatus("Watching. The first sheet is about one second of frames.");
+    setStatus("Watching. The first sheet is every frame from about half a second.");
   }
 
   async function onConnect() {
@@ -389,7 +389,7 @@ export function CameraView() {
           <CardHeader>
             <CardTitle>Camera</CardTitle>
             <CardDescription>
-              About 30 frames from one second go into one JPEG, so a blink covers several panels. Frames are not stored.
+              Every camera frame from about half a second goes into one JPEG. The laptop camera cannot make 100 different frames in one second. Frames are not stored.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">

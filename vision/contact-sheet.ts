@@ -1,12 +1,12 @@
 export const SHEET_COLS = 6;
-export const SHEET_PANELS = 30;
-/** One sheet is about one second of video, so a blink covers several panels. */
-export const SHEET_MIN_SPAN_MS = 800;
-export const SHEET_WINDOW_MS = 1_000;
+export const SHEET_PANELS = 18;
+/** Half a second of every camera frame. A blink is about 100–400ms, so it covers several panels. */
+export const SHEET_MIN_SPAN_MS = 350;
+export const SHEET_WINDOW_MS = 500;
 
-const CELL_W = 160;
-const CELL_H = 120;
-const LABEL_H = 14;
+const CELL_W = 192;
+const CELL_H = 144;
+const LABEL_H = 16;
 
 function loadJpeg(jpegBase64: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -17,7 +17,7 @@ function loadJpeg(jpegBase64: string) {
   });
 }
 
-/** One JPEG grid. Eight panels, left to right, top to bottom. */
+/** One JPEG grid. Panels go left to right, then top to bottom. */
 export async function renderContactSheet(frames: { jpeg: string; t: number }[]) {
   if (frames.length < 2 || typeof document === "undefined") return null;
   const startedAt = frames[0].t;
