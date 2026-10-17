@@ -1,12 +1,14 @@
 export const SHEET_COLS = 4;
 export const SHEET_ROWS = 2;
 export const SHEET_PANELS = SHEET_COLS * SHEET_ROWS;
-export const SHEET_EVERY_MS = 8_000;
-export const SHEET_MIN_SPAN_MS = 7_000;
+/** One sheet per this long, so a blink is not spread across too many seconds. */
+export const SHEET_MIN_SPAN_MS = 1_500;
+/** If scoring falls behind, keep only the latest slice. Panels stay about 0.25s apart. */
+export const SHEET_WINDOW_MS = 2_500;
 
-const CELL_W = 160;
-const CELL_H = 120;
-const LABEL_H = 16;
+const CELL_W = 240;
+const CELL_H = 180;
+const LABEL_H = 18;
 
 function loadJpeg(jpegBase64: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -47,7 +49,7 @@ export async function renderContactSheet(frames: { jpeg: string; t: number }[]) 
     context.fillText(`${seconds}s`, x + 4, y + CELL_H + LABEL_H / 2);
   });
 
-  const url = canvas.toDataURL("image/jpeg", 0.6);
+  const url = canvas.toDataURL("image/jpeg", 0.75);
   const comma = url.indexOf(",");
   if (comma < 0) return null;
   return { jpegBase64: url.slice(comma + 1), startedAt, clipEndedAt };
