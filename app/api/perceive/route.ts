@@ -5,38 +5,28 @@ import {
 } from "@/vision/desk";
 
 const PERCEPTRON_URL = "https://api.perceptron.inc/v1/chat/completions";
-const MAX_FRAMES = 12;
-const MAX_FRAME_CHARS = 250_000;
-
-type IncomingFrame = { jpeg_base64?: unknown; timestamp_ms?: unknown };
+const MAX_IMAGE_CHARS = 2_000_000;
 
 function error(status: number, code: string, message: string) {
   return Response.json({ error: code, message }, { status });
 }
 
-function readFrames(value: unknown) {
+function readSheet(value: unknown) {
   if (!value || typeof value !== "object") return null;
-  const frames = (value as { frames?: unknown }).frames;
-  if (!Array.isArray(frames) || frames.length < 2 || frames.length > MAX_FRAMES) return null;
-
-  const parsed: { jpegBase64: string; timestampMs: number }[] = [];
-  let last = -1;
-  for (const frame of frames as IncomingFrame[]) {
-    if (typeof frame.jpeg_base64 !== "string" || typeof frame.timestamp_ms !== "number") {
-      return null;
-    }
-    if (!Number.isFinite(frame.timestamp_ms) || frame.timestamp_ms < last) return null;
-    if (frame.jpeg_base64.length === 0 || frame.jpeg_base64.length > MAX_FRAME_CHARS) return null;
-    last = frame.timestamp_ms;
-    parsed.push({ jpegBase64: frame.jpeg_base64, timestampMs: Math.round(frame.timestamp_ms) });
-  }
-  return parsed;
+  const record = value as { image_base64?: unknown; panel_count?: unknown; duration_ms?: unknown };
+  if (typeof record.image_base64 !== "string") return null;
+  if (record.image_base64.length === 0 || record.image_base64.length > MAX_IMAGE_CHARS) return null;
+  const panelCount = record.panel_count;
+  const durationMs = record.duration_ms;
+  if (typeof panelCount !== "number" || panelCount < 2 || panelCount > 8) return null;
+  if (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs < 0) return null;
+  return { imageBase64: record.image_base64, panelCount, durationMs: Math.round(durationMs) };
 }
 
 async function callPerceptron(
   apiKey: string,
   model: string,
-  frames: { jpegBase64: string; timestampMs: number }[],
+  sheet: { imageBase64: string; panelCount: number; durationMs: number },
   withReasoningEffort: boolean,
 ) {
   const response = await fetch(PERCEPTRON_URL, {
@@ -45,7 +35,9 @@ async function callPerceptron(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(buildPerceptronRequest(model, frames, withReasoningEffort)),
+    body: JSON.stringify(
+      buildPerceptronRequest(model, sheet.imageBase64, sheet.panelCount, sheet.durationMs, withReasoningEffort),
+    ),
     signal: AbortSignal.timeout(20_000),
   });
 
@@ -87,24 +79,30 @@ export async function POST(request: Request) {
     return error(400, "bad_request", "The frame payload was not JSON.");
   }
 
-  const frames = readFrames(body);
-  if (!frames) {
-    return error(400, "bad_request", "Send between 2 and 12 JPEG frames with timestamps.");
+  const sheet = readSheet(body);
+  if (!sheet) {
+    return error(400, "bad_request", "Send one contact-sheet JPEG.");
   }
 
   const model = process.env.PERCEPTRON_MODEL || "perceptron-mk1.5";
   const started = Date.now();
 
   try {
-    let attempt = await callPerceptron(apiKey, model, frames, true);
-    if (attempt.response.status === 400) {
-      attempt = await callPerceptron(apiKey, model, frames, false);
+    let attempt = await callPerceptron(apiKey, model, sheet, true);
+    const firstMessage = messageFrom(attempt.payload).error?.message ?? "";
+    const quota = attempt.response.status === 429 || attempt.response.status === 402 || /quota|rate limit/i.test(firstMessage);
+    if (attempt.response.status === 400 && !quota) {
+      attempt = await callPerceptron(apiKey, model, sheet, false);
     }
 
     const parsed = messageFrom(attempt.payload);
     if (!attempt.response.ok) {
-      const code = parsed.error?.code ?? "perceptron_error";
       const message = parsed.error?.message ?? `Perceptron returned ${attempt.response.status}.`;
+      const blocked = attempt.response.status === 429 || attempt.response.status === 402 || /quota|rate limit/i.test(message);
+      if (blocked) {
+        return error(429, "quota", message.slice(0, 300));
+      }
+      const code = parsed.error?.code ?? "perceptron_error";
       return error(attempt.response.status, code, message.slice(0, 300));
     }
 

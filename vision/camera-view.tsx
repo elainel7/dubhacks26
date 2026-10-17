@@ -13,6 +13,7 @@ import {
   type Reading,
   type StepResult,
 } from "@/vision/alerts";
+import { renderContactSheet, SHEET_MIN_SPAN_MS, SHEET_PANELS } from "@/vision/contact-sheet";
 import { SPEND_CAP_USD, tokenCost } from "@/vision/desk";
 import { selectWindow } from "@/vision/frames";
 import { serialAvailable, connectUno, type UnoLink } from "@/lib/serial";
@@ -38,6 +39,7 @@ export function CameraView() {
   const stateRef = useRef<AlertState>(initialAlertState(0));
   const watchingRef = useRef(false);
   const spendRef = useRef(0);
+  const holdUntilRef = useRef(0);
   const serialRef = useRef<UnoLink | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const buzzLockRef = useRef(Promise.resolve());
@@ -45,7 +47,7 @@ export function CameraView() {
   const [watching, setWatching] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
-  const [status, setStatus] = useState("Allow the camera. This computer beeps on its own when you stare or slouch.");
+  const [status, setStatus] = useState("Allow the camera. One contact sheet goes out every 8 seconds.");
   const [metrics, setMetrics] = useState<AlertState>(stateRef.current);
   const [spend, setSpend] = useState(0);
   const [serialLabel, setSerialLabel] = useState(
@@ -141,18 +143,22 @@ export function CameraView() {
     return comma >= 0 ? url.slice(comma + 1) : null;
   }
 
-  async function scoreWindow(frames: Capture[], degraded: boolean) {
-    const startedAt = frames[0].t;
-    const clipEndedAt = frames[frames.length - 1].t;
-    const payload = frames.map((frame) => ({
-      jpeg_base64: frame.jpeg,
-      timestamp_ms: Math.max(0, Math.round(frame.t - startedAt)),
-    }));
+  async function scoreSheet(frames: Capture[]) {
+    const sheet = await renderContactSheet(frames);
+    if (!sheet) {
+      setStatus("Could not build the contact sheet.");
+      return;
+    }
+    const durationMs = Math.max(0, sheet.clipEndedAt - sheet.startedAt);
 
     const response = await fetch("/api/perceive", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ frames: payload }),
+      body: JSON.stringify({
+        image_base64: sheet.jpegBase64,
+        panel_count: frames.length,
+        duration_ms: durationMs,
+      }),
     });
     const body = (await response.json()) as {
       error?: string;
@@ -167,7 +173,8 @@ export function CameraView() {
     };
 
     if (!response.ok) {
-      setStatus(body.message ?? "Perceptron could not score that window.");
+      if (body.error === "quota") holdUntilRef.current = Date.now() + 60_000;
+      setStatus(body.message ?? "Perceptron could not score that sheet.");
       return;
     }
 
@@ -202,13 +209,13 @@ export function CameraView() {
         postureScore: body.posture_score,
         head: body.head,
         shoulders: body.shoulders,
-        degraded,
-        clipEndedAt,
+        degraded: false,
+        clipEndedAt: sheet.clipEndedAt,
       },
       Date.now(),
     );
     commit(result);
-    if (!result.note) setStatus("Window scored. No reminder.");
+    if (!result.note) setStatus("Sheet scored. No reminder.");
   }
 
   useEffect(() => {
@@ -231,24 +238,23 @@ export function CameraView() {
         if (!watchingRef.current || inFlightRef.current) return;
         if (stateRef.current.phase === "break") return;
 
+        if (Date.now() < holdUntilRef.current) return;
+
         const fresh = bufferRef.current.filter((frame) => frame.t > lastSentRef.current);
         if (fresh.length < 2) return;
         const span = fresh[fresh.length - 1].t - fresh[0].t;
-        if (span < 1_500) return;
+        if (span < SHEET_MIN_SPAN_MS) return;
 
         const selected = selectWindow(
           fresh.map((frame) => ({ ...frame, timestampMs: frame.t })),
-          8,
+          SHEET_PANELS,
         );
         lastSentRef.current = fresh[fresh.length - 1].t;
         bufferRef.current = bufferRef.current.filter((frame) => frame.t > lastSentRef.current);
         inFlightRef.current = true;
-        setStatus("Mk1.5 is scoring the last two seconds.");
+        setStatus("Sending one contact sheet.");
         try {
-          await scoreWindow(
-            selected.frames.map((frame) => ({ jpeg: frame.jpeg, t: frame.t })),
-            selected.degraded,
-          );
+          await scoreSheet(selected.frames.map((frame) => ({ jpeg: frame.jpeg, t: frame.t })));
         } catch {
           setStatus("Could not reach the scoring route.");
         } finally {
@@ -302,7 +308,7 @@ export function CameraView() {
     lastSentRef.current = now;
     watchingRef.current = true;
     setWatching(true);
-    setStatus("Watching. This computer beeps if you stare or slouch.");
+    setStatus("Watching. The blink timer runs now. The first sheet goes out in about 8 seconds.");
   }
 
   async function onConnect() {
@@ -353,7 +359,7 @@ export function CameraView() {
           <CardHeader>
             <CardTitle>Camera</CardTitle>
             <CardDescription>
-              Frames leave this page only as a two-second burst to Mk1.5. They are not stored.
+              Eight panels are packed into one JPEG about every 8 seconds. That single image is the only Perceptron request. Frames are not stored.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">

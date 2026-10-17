@@ -155,6 +155,24 @@ test("break silences scores and ends after 20 seconds", () => {
   assert.equal(ended.buzz, null);
 });
 
+test("the live clock advances without a new score", () => {
+  const state = initialAlertState(1_000);
+  const step = tick(state, 3_500);
+  assert.equal(step.buzz, null);
+  assert.equal(step.state.secondsSinceBlink, 2.5);
+});
+
+test("a missing face keeps the clock frozen", () => {
+  const hidden = applyReading(
+    initialAlertState(0),
+    reading({ faceVisible: false, clipEndedAt: 1_000 }),
+    1_000,
+  );
+  const later = tick(hidden.state, 5_000);
+  assert.equal(later.state.phase, "no-face");
+  assert.equal(later.state.secondsSinceBlink, hidden.state.secondsSinceBlink);
+});
+
 test("the 20 minute mark starts a break", () => {
   const state = initialAlertState(0);
   const step = tick(state, BREAK_EVERY_MS);

@@ -15,16 +15,21 @@ export type DeskScore = {
 const HEADS: readonly HeadState[] = ["upright", "forward", "unknown"];
 const SHOULDERS: readonly ShoulderState[] = ["level", "tilted", "unknown"];
 
-export const DESK_PROMPT = [
-  "These frames are one webcam clip of a person at a laptop, in timestamp order.",
-  "blink_count is how many times the eyelids fully close and open again in this clip.",
-  "Looking down is not a blink. A blink is short.",
-  "posture_score is an integer from 1 to 10 for the last frame.",
-  "10 is upright, with the head over the shoulders.",
-  "1 is a deep slouch or the head pushed toward the screen.",
-  "If no face is visible, face_visible is false, blink_count is 0, posture_score is 5, and head and shoulders are unknown.",
-  "Do not identify the person.",
-].join(" ");
+export function contactSheetPrompt(panelCount: number, durationMs: number) {
+  const seconds = Math.max(1, Math.round(durationMs / 1000));
+  return [
+    `This image is one contact sheet of ${panelCount} webcam panels of a person at a laptop.`,
+    "Read the panels left to right, then top to bottom. Each panel is labeled with seconds from the start of the sheet.",
+    `The sheet covers about ${seconds} seconds.`,
+    "blink_count is how many times the eyelids fully close and open again across the whole sheet.",
+    "Looking down is not a blink. A blink is short.",
+    "posture_score is an integer from 1 to 10 for the last panel.",
+    "10 is upright, with the head over the shoulders.",
+    "1 is a deep slouch or the head pushed toward the screen.",
+    "If no face is visible, face_visible is false, blink_count is 0, posture_score is 5, and head and shoulders are unknown.",
+    "Do not identify the person.",
+  ].join(" ");
+}
 
 export function deskSchema() {
   return {
@@ -43,7 +48,9 @@ export function deskSchema() {
 
 export function buildPerceptronRequest(
   model: string,
-  frames: { jpegBase64: string; timestampMs: number }[],
+  imageBase64: string,
+  panelCount: number,
+  durationMs: number,
   withReasoningEffort: boolean,
 ) {
   const body: Record<string, unknown> = {
@@ -62,15 +69,10 @@ export function buildPerceptronRequest(
         role: "user",
         content: [
           {
-            type: "video_frames",
-            video_frames: {
-              frames: frames.map((frame) => ({
-                image_url: { url: `data:image/jpeg;base64,${frame.jpegBase64}` },
-                timestamp_ms: frame.timestampMs,
-              })),
-            },
+            type: "image_url",
+            image_url: { url: `data:image/jpeg;base64,${imageBase64}` },
           },
-          { type: "text", text: DESK_PROMPT },
+          { type: "text", text: contactSheetPrompt(panelCount, durationMs) },
         ],
       },
     ],

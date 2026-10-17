@@ -108,7 +108,20 @@ export function tick(state: AlertState, now: number): StepResult {
     return startBreak(state, now);
   }
 
-  return { state, buzz: null, note: "" };
+  if (state.phase !== "live") {
+    return { state, buzz: null, note: "" };
+  }
+
+  const secondsSinceBlink = Math.max(0, (now - state.lastBlinkAt) / 1000);
+  if (Math.abs(secondsSinceBlink - state.secondsSinceBlink) < 0.05) {
+    return { state, buzz: null, note: "" };
+  }
+
+  return {
+    state: { ...state, secondsSinceBlink },
+    buzz: null,
+    note: "",
+  };
 }
 
 export function applyReading(state: AlertState, reading: Reading, now: number): StepResult {
@@ -122,7 +135,7 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
   if (!reading.faceVisible) {
     return {
       state: {
-        ...due.state,
+        ...state,
         phase: "no-face",
         postureScore: null,
         head: "unknown",
