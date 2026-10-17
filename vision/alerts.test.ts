@@ -18,7 +18,7 @@ function reading(overrides: Partial<Reading> = {}): Reading {
   return {
     faceVisible: true,
     blinkCount: 0,
-    postureScore: 8,
+    postureScore: 90,
     head: "upright",
     shoulders: "level",
     degraded: false,
@@ -93,13 +93,13 @@ test("a missing face freezes the clock and stays quiet", () => {
   assert.equal(hidden.state.postureScore, null);
 });
 
-test("a score of 6 is already bad posture", () => {
+test("a score of 60 is already bad posture", () => {
   let state = initialAlertState(0);
   let buzz: string | null = null;
   for (let i = 1; i <= 3; i++) {
     const step = applyReading(
       state,
-      reading({ postureScore: 6, blinkCount: 1, clipEndedAt: i * 1_000 }),
+      reading({ postureScore: 60, blinkCount: 1, clipEndedAt: i * 1_000 }),
       i * 1_000,
     );
     state = step.state;
@@ -111,7 +111,7 @@ test("a score of 6 is already bad posture", () => {
   for (let i = 1; i <= 3; i++) {
     const step = applyReading(
       upright,
-      reading({ postureScore: 7, blinkCount: 1, clipEndedAt: i * 1_000 }),
+      reading({ postureScore: 75, blinkCount: 1, clipEndedAt: i * 1_000 }),
       i * 1_000,
     );
     upright = step.state;
@@ -252,10 +252,16 @@ test("desk JSON is clamped and rejected when a field is missing", () => {
     {
       face_visible: true,
       blink_count: 0,
-      posture_score: 8,
+      posture_score: 80,
       head: "upright",
       shoulders: "level",
     },
+  );
+  assert.equal(
+    parseDeskContent(
+      '{"face_visible":true,"blink_count":0,"posture_score":73,"head":"upright","shoulders":"level"}',
+    )?.posture_score,
+    73,
   );
   assert.equal(parseDeskContent('{"face_visible":true}'), null);
   assert.ok(tokenCost(1_000_000, 0) - 0.15 < 1e-9);

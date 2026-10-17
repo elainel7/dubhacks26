@@ -43,7 +43,7 @@ Open [http://localhost:43123](http://localhost:43123) in Chrome or Edge.
 
 1. The first page asks for the buzzer's device id and opens the numbers for that id.
 2. **Camera** in the nav shows the webcam. Click **Allow the camera**. A stare of about 8 seconds beeps twice. Three low posture scores in a row beep three times. A 20-minute stretch starts a 20-second break beep. There is no fake score mode.
-3. Perceptron code lives in `vision/`. The camera packs every frame from about half a second into one contact sheet. A posture score of 6 or below is already poor. Frames are not stored or shown on the numbers page.
+3. Perceptron code lives in `vision/`. The camera packs every frame from about half a second into one contact sheet. Posture is 1–100 from the large panel only. 60 or below is poor. Frames are not stored or shown on the numbers page.
 4. Flash `arduino/perch_buzzer/perch_buzzer.ino` when the Uno is here. Piezo + goes to pin 8, piezo − to GND. **Connect Uno** on the camera page sends the same beeps to the board.
 
 Scoring stops automatically around $3 of Mk1.5 usage (input $0.15 / million tokens, output $1.50 / million). Restart the page to reset the counter.

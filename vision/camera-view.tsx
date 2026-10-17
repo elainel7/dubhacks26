@@ -443,7 +443,7 @@ export function CameraView() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted-foreground">Posture 1–10</dt>
+                  <dt className="text-xs text-muted-foreground">Posture 1–100</dt>
                   <dd className="mt-1 font-mono text-3xl tabular-nums">{posture}</dd>
                 </div>
               </dl>
