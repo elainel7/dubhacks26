@@ -55,13 +55,13 @@ A new event lands in `posture_events` immediately. It shows up in `posture_per_m
 
 `web/index.html` is a single static page: a user selector (`user_1`, `user_2`), good-vs-bad chart, and summary stats. Chart.js is loaded from a CDN, so there is no build step. Upload the contents of `web/` to the GoDaddy static host.
 
-Set the API origin in the script at the top of `web/index.html`:
+`API_BASE` at the top of `web/index.html` is the live API, with no trailing slash:
 
 ```javascript
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://posture-api-x1my.onrender.com";
 ```
 
-If the site is served over https, point `API_BASE` at an https API origin.
+For a local API, point that constant at `http://127.0.0.1:8000` instead.
 
 Locally, serve the page (opening the file directly can block requests from the page):
 
@@ -73,6 +73,6 @@ Then open `http://127.0.0.1:8080`.
 
 ## Deploy
 
-`render.yaml` is a Render blueprint for a free Python web service. Create the Blueprint from this repo in the Render dashboard and set `DATABASE_URL` when prompted. That variable is `sync: false`, so the connection string stays in the dashboard and is not stored in the repo.
+The API is live at https://posture-api-x1my.onrender.com. `API_BASE` at the top of `web/index.html` is that URL with no trailing slash. Upload `web/` to GoDaddy. CORS allows any origin, so https://nohunch.club can call the API.
 
-After the service is up, set `API_BASE` at the top of `web/index.html` to the service's https URL, then upload `web/` to GoDaddy.
+`render.yaml` is a Render blueprint for a free Python web service. `DATABASE_URL` is `sync: false`: set it in the Render dashboard. It is not stored in the repo.
