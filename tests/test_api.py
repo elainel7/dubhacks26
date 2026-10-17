@@ -290,6 +290,7 @@ class ApiTests(unittest.TestCase):
 
     def test_dashboard_contract(self):
         html = Path("web/index.html").read_text(encoding="utf-8")
+        self.assertEqual(Path("index.html").read_text(encoding="utf-8"), html)
         self.assertIn('const API_BASE = "https://posture-api-x1my.onrender.com"', html)
         self.assertNotIn("posture-api-x1my.onrender.com/", html)
         self.assertLess(html.index("API_BASE"), html.index("<body>"))
