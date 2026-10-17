@@ -254,6 +254,74 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(confidence.status_code, 422)
         self.assertEqual(conn.queries, [])
 
+    def test_device_id_format_passes_clean_user_id(self):
+        device_id = "desk-lamp_01"
+        long_id = ("Ab" * 39) + "_Z"
+        self.assertEqual(len(long_id), 80)
+        self.assertEqual(main._clean_user_id(f"  {device_id}  "), device_id)
+        self.assertEqual(main._clean_user_id(long_id), long_id)
+        self.assertEqual(main._clean_user_id("user_1"), "user_1")
+
+        stored = datetime(2026, 10, 17, 20, 0, tzinfo=timezone.utc)
+        conn = FakeConn(
+            [
+                {
+                    "time": stored,
+                    "user_id": device_id,
+                    "label": "slouching",
+                    "confidence": 0.4,
+                }
+            ]
+        )
+        self.use_conn(conn)
+        created = self.client.post(
+            "/events",
+            json={
+                "time": "2026-10-17T20:00:00Z",
+                "user_id": device_id,
+                "label": "slouching",
+                "confidence": 0.4,
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json()["user_id"], device_id)
+        self.assertEqual(conn.queries[0][1][1], device_id)
+
+        bucket = datetime(2026, 10, 17, 20, 0, tzinfo=timezone.utc)
+        timeline_conn = FakeConn(
+            [
+                [
+                    {
+                        "bucket": bucket,
+                        "good_samples": 0,
+                        "bad_samples": 1,
+                        "samples": 1,
+                        "avg_confidence": 0.4,
+                    }
+                ]
+            ]
+        )
+        self.use_conn(timeline_conn)
+        timeline = self.client.get(f"/users/{device_id}/timeline?hours=1")
+        self.assertEqual(timeline.status_code, 200)
+        self.assertEqual(timeline.json()["user_id"], device_id)
+        sql, params = timeline_conn.queries[0]
+        self.assertIn("FROM posture_per_minute", sql)
+        self.assertEqual(params, (device_id, 1.0))
+
+        summary_conn = FakeConn(
+            [
+                {"good_samples": 0, "bad_samples": 1, "samples": 1},
+                {"label": "slouching"},
+            ]
+        )
+        self.use_conn(summary_conn)
+        summary = self.client.get(f"/users/{long_id}/summary?hours=6")
+        self.assertEqual(summary.status_code, 200)
+        self.assertEqual(summary.json()["user_id"], long_id)
+        self.assertEqual(summary.json()["most_common_bad_label"], "slouching")
+        self.assertEqual(summary_conn.queries[0][1][0], long_id)
+
     def test_hours_out_of_range(self):
         conn = FakeConn([])
         self.use_conn(conn)
