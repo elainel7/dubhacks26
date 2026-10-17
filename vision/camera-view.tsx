@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,14 +50,19 @@ export function CameraView() {
   const [watching, setWatching] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
-  const [status, setStatus] = useState("Allow the camera. Each sheet is one second of video, about 30 frames.");
-  const [metrics, setMetrics] = useState<AlertState>(() => initialAlertState(0));
+  const [status, setStatus] = useState("Allow the camera. Each sheet is every frame from about half a second.");
+  const [metrics, setMetrics] = useState<AlertState>(stateRef.current);
   const [spend, setSpend] = useState(0);
-  const [serialLabel, setSerialLabel] = useState(
-    serialAvailable() ? "Uno not connected" : "Web Serial needs Chrome or Edge",
+  const serialReady = useSyncExternalStore(
+    () => () => {},
+    () => serialAvailable(),
+    () => false,
   );
+  const [serialNote, setSerialLabel] = useState<string | null>(null);
+  const serialLabel = serialNote ?? (serialReady ? "Uno not connected" : "Web Serial needs Chrome or Edge");
   const [unoReady, setUnoReady] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
+  const [sheets, setSheets] = useState<{ url: string; panels: number; at: number }[]>([]);
   const [breakLeft, setBreakLeft] = useState<number | null>(null);
   const [saveNote, setSaveNote] = useState<string | null>(null);
 
@@ -120,7 +125,7 @@ export function CameraView() {
             facingMode: "user",
             width: { ideal: 640 },
             height: { ideal: 480 },
-            frameRate: { ideal: 30, max: 30 },
+            frameRate: { ideal: 60 },
           },
         }),
         new Promise<MediaStream>((_, reject) => {
@@ -180,6 +185,9 @@ export function CameraView() {
       return;
     }
     const durationMs = Math.max(0, sheet.clipEndedAt - sheet.startedAt);
+    setSheets((current) =>
+      [{ url: `data:image/jpeg;base64,${sheet.jpegBase64}`, panels: frames.length, at: Date.now() }, ...current].slice(0, 6),
+    );
 
     const response = await fetch("/api/perceive", {
       method: "POST",
@@ -254,8 +262,9 @@ export function CameraView() {
     );
     commit(result, now);
     const blinks = body.blink_count === 1 ? "1 blink" : `${body.blink_count} blinks`;
-    if (!result.note) setStatus(`Sheet scored. ${blinks}, posture ${body.posture_score}.`);
-    void persistScore(scored);
+    const reset = body.blink_count > 0 ? " Timer reset." : "";
+    const lead = result.note ? `${result.note} ` : "";
+    setStatus(`${lead}Sheet: ${blinks}, posture ${body.posture_score}.${reset}`);
   }
 
   useEffect(() => {
@@ -271,8 +280,8 @@ export function CameraView() {
       const jpeg = grab();
       if (!jpeg) return;
       bufferRef.current.push({ jpeg, t: Date.now() });
-      const cutoff = Date.now() - 2_000;
-      if (bufferRef.current.length > 45) {
+      const cutoff = Date.now() - 1_000;
+      if (bufferRef.current.length > 80) {
         bufferRef.current = bufferRef.current.filter((frame) => frame.t >= cutoff);
       }
     };
@@ -298,7 +307,7 @@ export function CameraView() {
         if (Date.now() < holdUntilRef.current) return;
 
         const fresh = bufferRef.current.filter((frame) => frame.t > lastSentRef.current);
-        if (fresh.length < 12) return;
+        if (fresh.length < 8) return;
         const span = fresh[fresh.length - 1].t - fresh[0].t;
         if (span < SHEET_MIN_SPAN_MS) return;
         const windowStart = fresh[fresh.length - 1].t - SHEET_WINDOW_MS;
@@ -369,7 +378,7 @@ export function CameraView() {
     lastSentRef.current = now;
     watchingRef.current = true;
     setWatching(true);
-    setStatus("Watching. The first sheet is about one second of frames.");
+    setStatus("Watching. The first sheet is every frame from about half a second.");
   }
 
   async function onConnect() {
@@ -422,10 +431,9 @@ export function CameraView() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.85fr)]">
         <Card className="bg-card/95">
           <CardHeader>
-            <CardTitle className="font-heading text-2xl">Preview</CardTitle>
-            <CardDescription className="text-sm leading-relaxed">
-              About 30 frames from one second go into one JPEG, so a blink covers several panels. Frames
-              are not stored.
+            <CardTitle>Camera</CardTitle>
+            <CardDescription>
+              Every camera frame from about half a second goes into one JPEG. The laptop camera cannot make 100 different frames in one second. Frames are not stored.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
@@ -478,15 +486,15 @@ export function CameraView() {
                     {watching ? formatSeconds(metrics.secondsSinceBlink) : "—"}
                   </dd>
                 </div>
-                <div className="rounded-xl bg-muted px-2 py-3 sm:px-3">
-                  <dt className="text-xs font-semibold text-muted-foreground">Blinks / min</dt>
-                  <dd className="mt-1 font-heading text-3xl tabular-nums">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Blinks, last minute</dt>
+                  <dd className="mt-1 font-mono text-3xl tabular-nums">
                     {watching ? metrics.blinksPerMinute : "—"}
                   </dd>
                 </div>
-                <div className="rounded-xl bg-muted px-2 py-3 sm:px-3">
-                  <dt className="text-xs font-semibold text-muted-foreground">Posture 1–10</dt>
-                  <dd className={`mt-1 font-heading text-3xl tabular-nums ${postureTone}`}>{posture}</dd>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Posture 1–100</dt>
+                  <dd className="mt-1 font-mono text-3xl tabular-nums">{posture}</dd>
                 </div>
               </dl>
             </CardContent>

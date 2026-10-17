@@ -21,18 +21,23 @@ export function contactSheetPrompt(panelCount: number, durationMs: number) {
     `This image is one contact sheet of ${panelCount} webcam panels of a person at a laptop.`,
     "Read the panels left to right, then top to bottom. Each panel is labeled with seconds from the start of the sheet.",
     `The sheet covers ${seconds} seconds.`,
-    "The panels are consecutive video frames at about 30 per second.",
+    "The panels are every frame the camera produced, usually 30 to 60 per second, over about half a second.",
+    "A blink lasts about a tenth of a second, so the eyelids should be shut in several panels in a row.",
     "blink_count is the number of blinks, not the number of panels with closed eyes.",
     "One blink is a run of panels where the eyelids close and then open.",
     "The person may wear glasses. Score the eyelids, not the lenses or the glare.",
     "A bright reflection on the glasses is not an open eye.",
     "Looking down is not a blink.",
-    "posture_score is an integer from 1 to 10 for the last panel only.",
-    "10 is rare: ears over the shoulders, chin slightly tucked, neck long, torso not leaning toward the screen.",
-    "7 is already poor: head forward of the shoulders, rounded upper back, or a lean toward the laptop.",
-    "4 is a clear slouch. 1 is collapsed onto the desk.",
-    "Do not give 8, 9, or 10 to someone whose head is in front of their shoulders.",
-    "If no face is visible, face_visible is false, blink_count is 0, posture_score is 5, and head and shoulders are unknown.",
+    "The small panels are only for blinks.",
+    "posture_score is an integer from 1 to 100 for the large panel labeled POSTURE. Ignore the small panels for this score.",
+    "1 is the worst posture and 100 is the best. Use the whole range.",
+    "90 to 100: ear is directly over the shoulder, chin is back, chest is open.",
+    "70 to 85: upright, with only a small forward drift of the head.",
+    "50 to 65: head is clearly in front of the shoulders, or the upper back is rounded.",
+    "25 to 45: a real slouch, face much closer to the camera than the chest.",
+    "1 to 20: collapsed toward the desk.",
+    "A slouch and sitting up must differ by at least 25 points. Do not reuse one number for every sheet.",
+    "If no face is visible, face_visible is false, blink_count is 0, posture_score is 50, and head and shoulders are unknown.",
     "Do not identify the person.",
   ].join(" ");
 }
@@ -117,10 +122,17 @@ export function parseDeskContent(content: string): DeskScore | null {
   return {
     face_visible: record.face_visible,
     blink_count: Math.max(0, Math.min(4, Math.round(record.blink_count))),
-    posture_score: Math.max(1, Math.min(10, Math.round(record.posture_score))),
+    posture_score: postureOutOf100(record.posture_score),
     head: record.head as HeadState,
     shoulders: record.shoulders as ShoulderState,
   };
+}
+
+/** Perceptron sometimes still answers 1–10. Stretch those onto 1–100. A 1–100 answer is kept. */
+export function postureOutOf100(raw: number) {
+  const rounded = Math.round(raw);
+  const scaled = rounded >= 1 && rounded <= 10 ? rounded * 10 : rounded;
+  return Math.max(1, Math.min(100, scaled));
 }
 
 export function tokenCost(promptTokens: number, completionTokens: number) {
