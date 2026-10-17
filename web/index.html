@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Posture</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232f7d57'/%3E%3C/svg%3E" />
+  <script>
+    // API origin. Change this before uploading the file to GoDaddy.
+    // Use an https URL when the static site itself is served over https.
+    const API_BASE = "http://127.0.0.1:8000";
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f3efe6;
+      --ink: #1c1915;
+      --muted: #6b645b;
+      --card: #fffdf8;
+      --line: #e4ddd0;
+      --good: #2f7d57;
+      --bad: #c45c3e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.45 "Segoe UI", system-ui, sans-serif;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    header h1 {
+      margin: 0 0 4px;
+      font-size: 32px;
+      letter-spacing: -0.03em;
+    }
+    header p { margin: 0; color: var(--muted); }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 24px 0;
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    select, button {
+      font: inherit;
+      color: var(--ink);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+    button { cursor: pointer; align-self: end; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .stats article, .chart-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .stats h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .stats p {
+      margin: 8px 0 0;
+      font-size: 28px;
+      letter-spacing: -0.03em;
+    }
+    #bad-label, #samples { font-size: 22px; }
+    .chart-wrap { position: relative; height: 320px; }
+    #status { min-height: 1.4em; margin: 12px 0 0; color: var(--muted); }
+    @media (max-width: 700px) {
+      .stats { grid-template-columns: 1fr; }
+      .stats p { font-size: 24px; }
+      .chart-wrap { height: 240px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Posture</h1>
+      <p>Good and bad samples each minute, for a hardcoded user.</p>
+    </header>
+    <div class="controls">
+      <label>User
+        <select id="user">
+          <option value="user_1">user_1</option>
+          <option value="user_2">user_2</option>
+        </select>
+      </label>
+      <label>Hours
+        <select id="hours">
+          <option value="1">1</option>
+          <option value="6" selected>6</option>
+          <option value="24">24</option>
+        </select>
+      </label>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+    <section class="stats">
+      <article>
+        <h2>Good posture</h2>
+        <p id="percent">—</p>
+      </article>
+      <article>
+        <h2>Most common slip</h2>
+        <p id="bad-label">—</p>
+      </article>
+      <article>
+        <h2>Samples</h2>
+        <p id="samples">—</p>
+      </article>
+    </section>
+    <section class="chart-card">
+      <div class="chart-wrap">
+        <canvas id="chart" aria-label="Good and bad posture samples over time"></canvas>
+      </div>
+      <p id="status" role="status"></p>
+    </section>
+  </main>
+  <script>
+    const root = API_BASE.replace(/\/$/, "");
+    const userSelect = document.querySelector("#user");
+    const hoursSelect = document.querySelector("#hours");
+    const statusEl = document.querySelector("#status");
+    let chart = null;
+
+    function pretty(label) {
+      return label.replaceAll("_", " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+    }
+
+    function formatBucket(iso, hours) {
+      const date = new Date(iso);
+      if (Number(hours) > 12) {
+        return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      }
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function renderSummary(summary) {
+      document.querySelector("#percent").textContent =
+        summary.percent_good === null || summary.percent_good === undefined
+          ? "—"
+          : summary.percent_good + "%";
+      document.querySelector("#bad-label").textContent = summary.most_common_bad_label
+        ? pretty(summary.most_common_bad_label)
+        : "None";
+      document.querySelector("#samples").textContent =
+        summary.good_samples + " good · " + summary.bad_samples + " bad";
+    }
+
+    function renderChart(timeline) {
+      if (chart) {
+        chart.destroy();
+        chart = null;
+      }
+      if (typeof Chart === "undefined") {
+        return false;
+      }
+      const hours = timeline.hours;
+      chart = new Chart(document.querySelector("#chart"), {
+        type: "line",
+        data: {
+          labels: timeline.points.map((point) => formatBucket(point.bucket, hours)),
+          datasets: [
+            {
+              label: "Good",
+              data: timeline.points.map((point) => point.good_samples),
+              borderColor: "#2f7d57",
+              backgroundColor: "#2f7d57",
+              tension: 0.2,
+              pointRadius: timeline.points.length > 80 ? 0 : 2,
+            },
+            {
+              label: "Bad",
+              data: timeline.points.map((point) => point.bad_samples),
+              borderColor: "#c45c3e",
+              backgroundColor: "#c45c3e",
+              tension: 0.2,
+              pointRadius: timeline.points.length > 80 ? 0 : 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: "Samples" } },
+            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+          },
+        },
+      });
+      return true;
+    }
+
+    let requestId = 0;
+
+    async function load() {
+      const id = ++requestId;
+      const userId = userSelect.value;
+      const hours = hoursSelect.value;
+      statusEl.textContent = "Loading…";
+      try {
+        const [timelineRes, summaryRes] = await Promise.all([
+          fetch(root + "/users/" + encodeURIComponent(userId) + "/timeline?hours=" + encodeURIComponent(hours)),
+          fetch(root + "/users/" + encodeURIComponent(userId) + "/summary?hours=" + encodeURIComponent(hours)),
+        ]);
+        if (id !== requestId) return;
+        if (!timelineRes.ok || !summaryRes.ok) {
+          throw new Error("API returned " + timelineRes.status + " / " + summaryRes.status);
+        }
+        const timeline = await timelineRes.json();
+        const summary = await summaryRes.json();
+        renderSummary(summary);
+        const chartOk = renderChart(timeline);
+        const minutes = timeline.points.length;
+        if (!chartOk) {
+          statusEl.textContent = "Chart library failed to load. Summary stats are still shown.";
+          return;
+        }
+        statusEl.textContent = minutes
+          ? minutes + " minutes for " + userId
+          : "No minutes in this window for " + userId;
+      } catch (err) {
+        if (id !== requestId) return;
+        statusEl.textContent = "Could not load posture data. " + err.message;
+      }
+    }
+
+    userSelect.addEventListener("change", load);
+    hoursSelect.addEventListener("change", load);
+    document.querySelector("#refresh").addEventListener("click", load);
+    load();
+  </script>
+</body>
+</html>
