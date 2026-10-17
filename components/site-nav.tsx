@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
-
-const KEY = "perch-device";
+import { DEVICE_STORAGE_KEY } from "@/lib/device-id";
 
 function subscribe(onStoreChange: () => void) {
   window.addEventListener("perch-device", onStoreChange);
@@ -11,7 +10,7 @@ function subscribe(onStoreChange: () => void) {
 }
 
 function snapshot() {
-  return sessionStorage.getItem(KEY);
+  return sessionStorage.getItem(DEVICE_STORAGE_KEY);
 }
 
 function serverSnapshot() {
@@ -19,7 +18,7 @@ function serverSnapshot() {
 }
 
 export function rememberDevice(id: string) {
-  sessionStorage.setItem(KEY, id);
+  sessionStorage.setItem(DEVICE_STORAGE_KEY, id);
   window.dispatchEvent(new Event("perch-device"));
 }
 

@@ -14,8 +14,10 @@ import {
   type StepResult,
 } from "@/vision/alerts";
 import { renderContactSheet, SHEET_MIN_SPAN_MS, SHEET_PANELS } from "@/vision/contact-sheet";
-import { SPEND_CAP_USD, tokenCost } from "@/vision/desk";
+import { SPEND_CAP_USD, tokenCost, type DeskScore } from "@/vision/desk";
+import { postureEventFromScore, SAVED_NOTE, UNSAVED_NOTE } from "@/vision/events";
 import { selectWindow } from "@/vision/frames";
+import { readStoredDeviceId } from "@/lib/device-id";
 import { serialAvailable, connectUno, type UnoLink } from "@/lib/serial";
 import { playBuzz } from "@/lib/sound";
 
@@ -43,6 +45,7 @@ export function CameraView() {
   const serialRef = useRef<UnoLink | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const buzzLockRef = useRef(Promise.resolve());
+  const aliveRef = useRef(true);
 
   const [watching, setWatching] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -56,13 +59,16 @@ export function CameraView() {
   const [unoReady, setUnoReady] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
   const [breakLeft, setBreakLeft] = useState<number | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
 
   useEffect(() => {
     watchingRef.current = watching;
   }, [watching]);
 
   useEffect(() => {
+    aliveRef.current = true;
     return () => {
+      aliveRef.current = false;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       void serialRef.current?.close();
       void audioRef.current?.close();
@@ -143,6 +149,25 @@ export function CameraView() {
     return comma >= 0 ? url.slice(comma + 1) : null;
   }
 
+  async function persistScore(score: DeskScore) {
+    try {
+      const event = postureEventFromScore(score, readStoredDeviceId(window.sessionStorage));
+      if (!event) {
+        if (score.face_visible && aliveRef.current) setSaveNote(UNSAVED_NOTE);
+        return;
+      }
+      const response = await fetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(event),
+      });
+      if (!aliveRef.current) return;
+      setSaveNote(response.ok ? SAVED_NOTE : UNSAVED_NOTE);
+    } catch {
+      if (aliveRef.current) setSaveNote(UNSAVED_NOTE);
+    }
+  }
+
   async function scoreSheet(frames: Capture[]) {
     const sheet = await renderContactSheet(frames);
     if (!sheet) {
@@ -201,14 +226,21 @@ export function CameraView() {
       return;
     }
 
+    const scored: DeskScore = {
+      face_visible: body.face_visible,
+      blink_count: body.blink_count,
+      posture_score: body.posture_score,
+      head: body.head,
+      shoulders: body.shoulders,
+    };
     const result = applyReading(
       stateRef.current,
       {
-        faceVisible: body.face_visible,
-        blinkCount: body.blink_count,
-        postureScore: body.posture_score,
-        head: body.head,
-        shoulders: body.shoulders,
+        faceVisible: scored.face_visible,
+        blinkCount: scored.blink_count,
+        postureScore: scored.posture_score,
+        head: scored.head,
+        shoulders: scored.shoulders,
         degraded: false,
         clipEndedAt: sheet.clipEndedAt,
       },
@@ -216,6 +248,7 @@ export function CameraView() {
     );
     commit(result);
     if (!result.note) setStatus("Sheet scored. No reminder.");
+    void persistScore(scored);
   }
 
   useEffect(() => {
@@ -350,7 +383,8 @@ export function CameraView() {
         </div>
         <p className="max-w-2xl text-sm text-muted-foreground">
           This page is only so you can see the webcam. Frames are sent to Perceptron and are not stored.
-          A stare or a slouch beeps on this computer until the Arduino is plugged in.
+          A visible face&apos;s score is saved for the device id you opened. A stare or a slouch beeps on
+          this computer until the Arduino is plugged in.
         </p>
       </header>
 
@@ -382,6 +416,7 @@ export function CameraView() {
             <p className="text-sm" aria-live="polite">
               {status}
             </p>
+            {saveNote ? <p className="text-xs text-muted-foreground">{saveNote}</p> : null}
           </CardContent>
         </Card>
 
