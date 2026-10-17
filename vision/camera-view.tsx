@@ -59,6 +59,7 @@ export function CameraView() {
   const serialLabel = serialNote ?? (serialReady ? "Uno not connected" : "Web Serial needs Chrome or Edge");
   const [unoReady, setUnoReady] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
+  const [sheets, setSheets] = useState<{ url: string; panels: number; at: number }[]>([]);
   const [breakLeft, setBreakLeft] = useState<number | null>(null);
 
   useEffect(() => {
@@ -159,6 +160,9 @@ export function CameraView() {
       return;
     }
     const durationMs = Math.max(0, sheet.clipEndedAt - sheet.startedAt);
+    setSheets((current) =>
+      [{ url: `data:image/jpeg;base64,${sheet.jpegBase64}`, panels: frames.length, at: Date.now() }, ...current].slice(0, 6),
+    );
 
     const response = await fetch("/api/perceive", {
       method: "POST",
@@ -410,6 +414,23 @@ export function CameraView() {
               ) : null}
             </div>
             <canvas ref={canvasRef} width={FRAME_W} height={FRAME_H} className="hidden" />
+            {sheets.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Each image below is a contact sheet that was just sent. Newest first. This is exactly what Perceptron scores, and it is not mirrored.
+                </p>
+                {sheets.map((sheet) => (
+                  <figure key={sheet.at} className="flex flex-col gap-1">
+                    <figcaption className="text-xs text-muted-foreground">
+                      {new Date(sheet.at).toLocaleTimeString()} · {sheet.panels} panels
+                    </figcaption>
+                    {/* Local data URLs of the exact JPEG sent to Perceptron. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={sheet.url} alt="Contact sheet sent to Perceptron" className="w-full rounded-lg bg-muted" />
+                  </figure>
+                ))}
+              </div>
+            ) : null}
             {cameraError ? <p className="text-sm text-destructive">{cameraError}</p> : null}
             <p className="text-sm" aria-live="polite">
               {status}
