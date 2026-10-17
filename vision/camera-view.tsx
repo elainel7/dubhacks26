@@ -7,12 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   applyReading,
   initialAlertState,
+  noteBlink,
   tick,
   type AlertState,
   type Buzz,
   type Reading,
   type StepResult,
 } from "@/vision/alerts";
+import { initialBlinkTrack, trackBlink, type BlinkTrack } from "@/vision/blink-track";
+import { loadFaceBlink, type FaceBlink } from "@/vision/face-blink";
 import { renderContactSheet, SHEET_MIN_SPAN_MS, SHEET_PANELS, SHEET_WINDOW_MS } from "@/vision/contact-sheet";
 import { SPEND_CAP_USD, tokenCost } from "@/vision/desk";
 import { selectWindow } from "@/vision/frames";
@@ -43,6 +46,9 @@ export function CameraView() {
   const serialRef = useRef<UnoLink | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const buzzLockRef = useRef(Promise.resolve());
+  const faceBlinkRef = useRef<FaceBlink | null>(null);
+  const blinkTrackRef = useRef<BlinkTrack>(initialBlinkTrack());
+  const closureUiRef = useRef(0);
 
   const [watching, setWatching] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -61,10 +67,35 @@ export function CameraView() {
   const [latency, setLatency] = useState<number | null>(null);
   const [sheets, setSheets] = useState<{ url: string; panels: number; at: number }[]>([]);
   const [breakLeft, setBreakLeft] = useState<number | null>(null);
+  const [closure, setClosure] = useState<number | null>(null);
+  const [blinkNote, setBlinkNote] = useState("Loading eyelid tracker.");
 
   useEffect(() => {
     watchingRef.current = watching;
   }, [watching]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let opened: FaceBlink | null = null;
+    loadFaceBlink()
+      .then((detector) => {
+        if (cancelled) {
+          detector.close();
+          return;
+        }
+        opened = detector;
+        faceBlinkRef.current = detector;
+        setBlinkNote("Timer resets when the eyelids close.");
+      })
+      .catch(() => {
+        if (!cancelled) setBlinkNote("Eyelid tracker did not load. The timer follows the contact sheet.");
+      });
+    return () => {
+      cancelled = true;
+      opened?.close();
+      faceBlinkRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -214,11 +245,12 @@ export function CameraView() {
       return;
     }
 
+    const localBlink = faceBlinkRef.current !== null;
     const result = applyReading(
       stateRef.current,
       {
         faceVisible: body.face_visible,
-        blinkCount: body.blink_count,
+        blinkCount: localBlink ? 0 : body.blink_count,
         postureScore: body.posture_score,
         head: body.head,
         shoulders: body.shoulders,
@@ -231,7 +263,11 @@ export function CameraView() {
     const blinks = body.blink_count === 1 ? "1 blink" : `${body.blink_count} blinks`;
     const reset = body.blink_count > 0 ? " Timer reset." : "";
     const lead = result.note ? `${result.note} ` : "";
-    setStatus(`${lead}Sheet: ${blinks}, posture ${body.posture_score}.${reset}`);
+    setStatus(
+      localBlink
+        ? `${lead}Posture ${body.posture_score}. Blink timer follows the eyelids.`
+        : `${lead}Sheet: ${blinks}, posture ${body.posture_score}.${reset}`,
+    );
   }
 
   useEffect(() => {
@@ -242,8 +278,26 @@ export function CameraView() {
     const pushFrame = () => {
       if (!watchingRef.current || stateRef.current.phase === "break") return;
       const video = videoRef.current;
-      if (video && video.currentTime === lastVideoTime) return;
-      if (video) lastVideoTime = video.currentTime;
+      if (!video || video.currentTime === lastVideoTime) return;
+      lastVideoTime = video.currentTime;
+      const detector = faceBlinkRef.current;
+      if (detector) {
+        try {
+          const sample = detector.sample(video, performance.now());
+          const now = Date.now();
+          if (sample.faceVisible && now - closureUiRef.current > 200) {
+            closureUiRef.current = now;
+            setClosure(sample.score);
+          }
+          if (sample.faceVisible) {
+            const stepped = trackBlink(blinkTrackRef.current, sample.score, now);
+            blinkTrackRef.current = stepped.track;
+            if (stepped.blinked) commit(noteBlink(stateRef.current, now));
+          }
+        } catch {
+          // A bad frame stays on the sheet timer until the next one.
+        }
+      }
       const jpeg = grab();
       if (!jpeg) return;
       bufferRef.current.push({ jpeg, t: Date.now() });
@@ -341,6 +395,7 @@ export function CameraView() {
     stateRef.current = fresh;
     setMetrics(fresh);
     bufferRef.current = [];
+    blinkTrackRef.current = initialBlinkTrack();
     lastSentRef.current = now;
     watchingRef.current = true;
     setWatching(true);
@@ -443,7 +498,9 @@ export function CameraView() {
             <CardHeader>
               <CardTitle>Right now</CardTitle>
               <CardDescription>
-                {latency === null ? "No scored window yet." : `Last Mk1.5 call ${latency} ms.`}
+                {blinkNote}
+                {closure === null ? "" : ` Closure ${closure.toFixed(2)}.`}
+                {latency === null ? " No scored window yet." : ` Last Mk1.5 call ${latency} ms.`}
                 {metrics.head && metrics.phase === "live"
                   ? ` Head ${metrics.head}, shoulders ${metrics.shoulders}.`
                   : ""}

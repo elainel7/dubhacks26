@@ -7,6 +7,7 @@ import {
   BREAK_EVERY_MS,
   COOLDOWN_MS,
   initialAlertState,
+  noteBlink,
   startBreak,
   tick,
   type Reading,
@@ -73,6 +74,23 @@ test("a blink resets the stare clock", () => {
   assert.equal(late.state.secondsSinceBlink, 0);
   assert.equal(late.state.lastBlinkAt, 8_000);
   assert.equal(late.state.blinksPerMinute, 1);
+});
+
+test("a camera blink resets the clock even after the face was missing", () => {
+  const hidden = applyReading(initialAlertState(0), reading({ faceVisible: false }), 4_000);
+  assert.equal(hidden.state.phase, "no-face");
+  const blinked = noteBlink(hidden.state, 9_000);
+  assert.equal(blinked.state.phase, "live");
+  assert.equal(blinked.state.secondsSinceBlink, 0);
+  assert.equal(blinked.state.lastBlinkAt, 9_000);
+  assert.equal(blinked.state.blinksPerMinute, 1);
+
+  const sheet = applyReading(blinked.state, reading({ blinkCount: 0 }), 10_000);
+  assert.ok(sheet.state.secondsSinceBlink < 1.1);
+  assert.equal(sheet.state.blinksPerMinute, 1);
+
+  const resting = startBreak(initialAlertState(0), 1_000);
+  assert.equal(noteBlink(resting.state, 2_000).state.phase, "break");
 });
 
 test("a missing face freezes the clock and stays quiet", () => {

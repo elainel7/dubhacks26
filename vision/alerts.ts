@@ -124,6 +124,28 @@ export function tick(state: AlertState, now: number): StepResult {
   };
 }
 
+/** A blink seen on the camera. Resets the stare clock without waiting for a contact sheet. */
+export function noteBlink(state: AlertState, now: number): StepResult {
+  if (state.phase === "break") {
+    return { state, buzz: null, note: "" };
+  }
+
+  const events = [...state.blinkEvents, { at: now, count: 1 }];
+  const { kept, blinksPerMinute } = blinksInLastMinute(events, now);
+  return {
+    state: {
+      ...state,
+      phase: "live",
+      lastBlinkAt: now,
+      secondsSinceBlink: 0,
+      blinkEvents: kept,
+      blinksPerMinute,
+    },
+    buzz: null,
+    note: "Blink.",
+  };
+}
+
 export function applyReading(state: AlertState, reading: Reading, now: number): StepResult {
   if (state.phase === "break") {
     return { state, buzz: null, note: "" };
