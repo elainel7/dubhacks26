@@ -3,7 +3,7 @@
 Two parts live in this repo.
 
 - **Perch** opens on a device id. That page shows only that buzzer's numbers. **Camera** in the nav is a separate preview.
-- **Posture API** stores numeric posture rows in Tiger Data and serves the static dashboard in `web/`. Instructions follow the Perch section.
+- **Posture API** stores numeric posture rows in Tiger Data. The static dashboard is `index.html` at the repo root. Instructions follow the Perch section.
 
 ## Layout
 
@@ -15,7 +15,7 @@ index.html   copy of web/index.html
 render.yaml  Render blueprint; posture-api runs with root directory backend
 ```
 
-Porkbun Static Hosting publishes the `main` branch root to nohunch.club, so `index.html` stays at the repo root and must stay identical to `web/index.html`. The Perch Next.js app (`app/`, `components/`, `lib/`, `package.json`) also stays at the repo root. `backend/.env.example` holds the Perceptron key placeholders and `DATABASE_URL`. Copy it to `.env.local` for the camera app, and to `backend/.env` for the API.
+Porkbun Static Hosting publishes the `main` branch root to nohunch.club, so `index.html` stays at the repo root and must stay identical to `web/index.html`. The Perch Next.js app (`app/`, `components/`, `lib/`, `vision/`, `package.json`) also stays at the repo root. `vision/` holds the Perceptron scoring code. `backend/.env.example` holds the Perceptron key placeholders and `DATABASE_URL`. Copy it to `.env.local` for the camera app, and to `backend/.env` for the API.
 
 ## Perch
 
