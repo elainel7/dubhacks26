@@ -5,6 +5,18 @@ Two parts live in this repo.
 - **Perch** is the laptop camera, Perceptron Mk1.5, and the Arduino Uno buzzer. Instructions start under Perch.
 - **Posture API** stores numeric posture rows in Tiger Data and serves the static dashboard in `web/`. Instructions follow the Perch section.
 
+## Layout
+
+```
+backend/     FastAPI app (api/), SQL (db/), seed script (scripts/), Python tests (tests/), requirements.txt, .env.example
+web/         static posture dashboard (index.html)
+shared/      empty placeholder for code used by more than one app
+index.html   copy of web/index.html
+render.yaml  Render blueprint; posture-api runs with root directory backend
+```
+
+Porkbun Static Hosting publishes the `main` branch root to nohunch.club, so `index.html` stays at the repo root and must stay identical to `web/index.html`. The Perch Next.js app (`app/`, `components/`, `lib/`, `package.json`) also stays at the repo root. `backend/.env.example` holds the Perceptron key placeholders and `DATABASE_URL`. Copy it to `.env.local` for the camera app, and to `backend/.env` for the API.
+
 ## Perch
 
 The laptop camera watches. Perceptron Mk1.5 scores blinks and posture. An Arduino Uno buzzes.
@@ -13,7 +25,7 @@ The laptop camera watches. Perceptron Mk1.5 scores blinks and posture. An Arduin
 
 ```bash
 npm install
-cp .env.example .env.local
+cp backend/.env.example .env.local
 ```
 
 Put your key in `.env.local`:
@@ -496,15 +508,17 @@ Then one sentence: Gemini proposes the code, Tiger Data accepts it once, and nei
 
 ## Database
 
-Posture labels from the camera feed are stored in Tiger Data (TimescaleDB on Postgres). Dashboards read per-user rollups; user IDs are hardcoded per user. Schema, the one-minute continuous aggregate, and a seed script live in this repo.
+Posture labels from the camera feed are stored in Tiger Data (TimescaleDB on Postgres). Dashboards read per-user rollups; user IDs are hardcoded per user. Schema, the one-minute continuous aggregate, and a seed script live in `backend/`.
 
-Copy `.env.example` to `.env` and set `DATABASE_URL` locally. `.env` is gitignored — do not commit credentials.
+Copy `backend/.env.example` to `backend/.env` and set `DATABASE_URL`. `.env` is gitignored — do not commit credentials. From the repo root:
 
 ```bash
+cd backend
 pip install -r requirements.txt
+set -a && source .env && set +a
 ```
 
-Apply the schema and the continuous aggregate as two separate `psql` runs:
+Apply the schema and the continuous aggregate as two separate `psql` runs, still inside `backend/`:
 
 ```bash
 psql "$DATABASE_URL" -f db/schema.sql
@@ -518,14 +532,20 @@ python scripts/seed.py
 # python scripts/seed.py 12
 ```
 
-`seed.py` reads `DATABASE_URL` from the environment. Load `.env` first, for example `set -a && source .env && set +a`.
+`scripts/seed.py` reads `DATABASE_URL` from the environment.
 
 ## API
 
-A small FastAPI app reads `posture_per_minute` and accepts camera events. From the repo root, with `DATABASE_URL` set:
+A small FastAPI app reads `posture_per_minute` and accepts camera events. From `backend/`, with `DATABASE_URL` set:
 
 ```bash
 uvicorn api.main:app --port 8000
+```
+
+Run the API tests from `backend/`. They do not open a database connection:
+
+```bash
+python -m unittest tests.test_api -v
 ```
 
 Interactive docs are at `http://127.0.0.1:8000/docs`.
@@ -543,7 +563,7 @@ curl -s -X POST "http://127.0.0.1:8000/events" \
 
 CORS is open so a static site on another origin can call the API. There is no auth; user ids are plain strings such as `user_1` and `user_2`.
 
-A new event lands in `posture_events` immediately. It shows up in `posture_per_minute` after the refresh policy runs (about a minute), or when `scripts/seed.py` refreshes the aggregate.
+A new event lands in `posture_events` immediately. It shows up in `posture_per_minute` after the refresh policy runs (about a minute), or when `backend/scripts/seed.py` refreshes the aggregate.
 
 ## Dashboard
 
@@ -557,7 +577,7 @@ const API_BASE = "https://posture-api-x1my.onrender.com";
 
 For a local API, point that constant at `http://127.0.0.1:8000` instead.
 
-Locally, serve the page (opening the file directly can block requests from the page):
+Locally, from the repo root, serve the page (opening the file directly can block requests from the page):
 
 ```bash
 python -m http.server 8080 --directory web
@@ -569,4 +589,4 @@ Then open `http://127.0.0.1:8080`.
 
 The API is live at https://posture-api-x1my.onrender.com. `API_BASE` is that URL with no trailing slash. Porkbun Static Hosting publishes the repo root to nohunch.club on each push to main, so the root `index.html` is the page that gets published. Keep it identical to `web/index.html`. CORS allows any origin, so https://nohunch.club can call the API.
 
-`render.yaml` is a Render blueprint for a free Python web service. `DATABASE_URL` is `sync: false`: set it in the Render dashboard. It is not stored in the repo.
+`render.yaml` stays at the repo root, where Render looks for a blueprint. The `posture-api` service sets `rootDir: backend`, so the build command `pip install -r requirements.txt` and the start command `uvicorn api.main:app --host 0.0.0.0 --port $PORT` run inside `backend/`. `DATABASE_URL` is `sync: false`: set it in the Render dashboard. It is not stored in the repo. If an existing service does not pick up `rootDir` from the blueprint, set Root Directory to `backend` on the Render service.
