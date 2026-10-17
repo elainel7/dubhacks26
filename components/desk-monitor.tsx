@@ -149,10 +149,15 @@ export function DeskMonitor() {
   async function ensureCamera() {
     if (streamRef.current) return true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-      });
+      const stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        }),
+        new Promise<MediaStream>((_, reject) => {
+          window.setTimeout(() => reject(new Error("timeout")), 8_000);
+        }),
+      ]);
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -162,7 +167,7 @@ export function DeskMonitor() {
       setCameraError(null);
       return true;
     } catch {
-      setCameraError("Camera permission was blocked. Allow the camera for this page, then try again.");
+      setCameraError("Camera permission was blocked. Allow the camera for this page, or turn on Simulate Mk1.5.");
       setCameraOn(false);
       return false;
     }
@@ -324,6 +329,13 @@ export function DeskMonitor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watching]);
 
+  function rememberSimulation(on: boolean, nextScene: Scene = sceneRef.current) {
+    simulateRef.current = on;
+    sceneRef.current = nextScene;
+    setSimulate(on);
+    setScene(nextScene);
+  }
+
   async function toggleWatching() {
     if (watching) {
       watchingRef.current = false;
@@ -332,13 +344,19 @@ export function DeskMonitor() {
       return;
     }
     if (!simulateRef.current) {
+      setStatus("Opening the camera.");
       const ready = await ensureCamera();
-      if (!ready) return;
-    } else if (!streamRef.current) {
-      await ensureCamera();
+      if (!ready) {
+        setStatus("The camera did not open. Allow it in the browser bar, or turn on Simulate Mk1.5.");
+        return;
+      }
     }
-    if (!audioRef.current) audioRef.current = new AudioContext();
-    if (audioRef.current.state === "suspended") await audioRef.current.resume();
+    try {
+      if (!audioRef.current) audioRef.current = new AudioContext();
+      if (audioRef.current.state === "suspended") await audioRef.current.resume();
+    } catch {
+      // Watching still starts. The Uno, or a later click, can make the sound.
+    }
     const now = Date.now();
     const fresh = initialAlertState(now);
     stateRef.current = fresh;
@@ -519,7 +537,7 @@ export function DeskMonitor() {
               type="checkbox"
               className="size-4 accent-foreground"
               checked={simulate}
-              onChange={(event) => setSimulate(event.target.checked)}
+              onChange={(event) => rememberSimulation(event.target.checked)}
             />
             Simulate Mk1.5
           </label>
@@ -535,9 +553,8 @@ export function DeskMonitor() {
                 key={value}
                 type="button"
                 size="sm"
-                variant={scene === value ? "default" : "outline"}
-                disabled={!simulate}
-                onClick={() => setScene(value)}
+                variant={simulate && scene === value ? "default" : "outline"}
+                onClick={() => rememberSimulation(true, value)}
               >
                 {label}
               </Button>
