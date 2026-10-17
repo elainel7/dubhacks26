@@ -1,16 +1,22 @@
 # Perch — DubHacks build plan
 
-A lamp-clipped desk assistant that watches blinks and posture while you work, buzzes when you should blink, sit up, or look away for 20 seconds, and shows only numeric history for the code printed on the device.
+A lamp-clipped desk assistant. Perceptron Mk1.5 reads a short burst of webcam frames and returns a blink count and a posture score. The lamp buzzes. The site shows numeric history for the code printed on the device.
 
-Window: Saturday 1:00pm through Sunday 10:00am. Demo-ready means the checklist at the bottom of the schedule, not every integration. Stop feature work at 9:30am.
+Window: Saturday 1:00pm through Sunday morning. A published weekend schedule lists submissions at 10:30am Sunday. Stop feature work at 9:30am and treat 10:00am as the deadline.
 
 Working name is Perch. Rename it if you want. Do not spend the first hour naming it.
 
 ## Locked decisions
 
-Run face and pose vision in Chrome on the laptop, with MediaPipe, on video that never leaves the machine. The Arduino only receives one-letter commands and drives a buzzer and an LED. Clip a USB webcam (or the laptop, if that is all you have) to the lamp. The "device" the judge sees is the lamp. The computer is allowed to be the brain.
+Call Perceptron Mk1.5, model id `perceptron-mk1.5`, at `https://api.perceptron.inc/v1`. That is the hosted vision model. Isaac 0.1 and Isaac 0.2 were removed from this API on September 25, 2026. Those ids return HTTP 404 `model_not_found`. Isaac 0.5 is the open 36-billion-parameter embodied model. It is not what you call for a live webcam tonight, and it will not fit on a hackathon laptop.
 
-Store one row every 5 seconds in Tiger Data (Tiger Cloud, Postgres). Columns are numbers plus a short alert name. No images, no landmarks, no frames.
+At the start, `GET /v1/models` with the API key and ask the Perceptron booth whether any Isaac id is turned on for DubHacks. If one is listed, put that id in `PERCEPTRON_MODEL`. If none is listed, stay on `perceptron-mk1.5`. Swapping the id does not change the rest of the pipeline. Mk1 is the previous hosted model (`perceptron-mk1`) if Mk1.5 errors. Docs: [Perceptron Mk1.5](https://docs.perceptron.inc/perceptron-mk1.5). Keys: [platform.perceptron.inc](https://platform.perceptron.inc).
+
+The browser keeps a ring buffer of small JPEGs and sends about eight frames covering the last two seconds as `video_frames`. One snapshot cannot see a blink. Mk1.5 answers with JSON: face visible, blink count in that window, posture score from 1 to 10, head, shoulders. The laptop owns the clock, the cooldowns, and the buzzer. The Arduino only receives `B`, `P`, or `R`.
+
+Frames go to Perceptron because that is how Mk1.5 sees. They are not written to Tiger Data, not sent to Gemini, and not sent to the website. Store one numeric row per completed response.
+
+Clip a USB webcam, or the laptop, to the lamp. The lamp is the object a judge looks at.
 
 The website asks for the device code and queries with that code as a bound parameter. Gemini invents candidate codes. Tiger Data is the list of codes already issued. Gemini also writes a two-sentence coach note from a numeric summary. The SQL itself stays in the server, written by you.
 
@@ -27,7 +33,7 @@ A judge can:
 3. Stare, hear one blink reminder around 8 seconds, and see "seconds since blink" climb.
 4. Slouch, see the 1–10 score fall, and hear a different sound after it stays low.
 5. Press "Start 20-second break", look away, and hear the other reminders stay quiet for those 20 seconds.
-6. Open the network panel and see JSON numbers. No image payloads.
+6. On the dashboard, the network panel shows JSON numbers. Frames appear only on the monitor's call to your server, which forwards them to Perceptron.
 
 Backup if the camera or wifi fails: a phone video of steps 2–5, plus the dashboard already loaded with seeded rows for a second code.
 
@@ -39,18 +45,18 @@ One person: follow Track A through the alert sounds, then Track B's dashboard. A
 
 | Clock | Track A — vision and the lamp | Track B — data and the site |
 | --- | --- | --- |
-| 1:00–1:30 | Both: create the Next.js app, `npm install`, download the two `.task` model files into `public/models`. One person goes to the hardware table for an Arduino, a passive piezo, a USB cable, and any webcam with a clip. | Both: Tiger Cloud account, service in the closest US West region, pooled connection string. Google AI Studio API key. GoDaddy domain only if one is already on the account. |
-| 1:30–3:00 | Camera preview and a live blink count from Face Landmarker blendshapes. | Schema in the SQL editor. `lib/db.ts` with a JSONL fallback. Seed 2 hours of rows for code `demo-otter-42`. Dashboard draws that series. |
-| 3:00–4:30 | Pose Landmarker, 3-second "sit upright" calibration, posture score 1–10 on screen. | Device-code box. Unknown code and known-but-empty look different. Charts titled with units. |
+| 1:00–1:30 | Both: create the Next.js app and `npm install`. One person gets the Perceptron key, runs `GET /v1/models`, and times one `video_frames` call. Same person hits the hardware table for an Arduino, a passive piezo, a USB cable, and any webcam with a clip. | Both: Tiger Cloud account, service in the closest US West region, pooled connection string. Google AI Studio API key. GoDaddy domain only if one is already on the account. |
+| 1:30–3:00 | Camera preview. A two-second, eight-frame burst returns a blink count that goes up when you blink twice. | Schema in the SQL editor. `lib/db.ts` with a JSONL fallback. Seed 2 hours of rows for code `demo-otter-42`. Dashboard draws that series. |
+| 3:00–4:30 | The same response's posture score, 1–10, on screen. The loop repeats, one request at a time. | Device-code box. Unknown code and known-but-empty look different. Charts titled with units. |
 | 4:30–5:30 | Alert state machine and three Web Audio patterns. "Start 20-second break" button. | `POST /api/samples` and `GET /api/series?device_id=`. Track A can post before Tiger is switched on. |
-| 5:30–6:30 | Eat. Then one real row visible from a live session. If the face tracker is still at zero blinks, stay on Track A and cut pose before you cut blinks. | Eat. Point `DATABASE_URL` at Tiger if `psql` or the SQL editor can `select count(*) from samples`. |
+| 5:30–6:30 | Eat. Then one real row visible from a live session. If blink counts stay stuck at zero, stay on Track A. Read `usage.prompt_tokens` and estimate hourly cost before leaving the loop on. | Eat. Point `DATABASE_URL` at Tiger if `psql` or the SQL editor can `select count(*) from samples`. |
 | 6:30–8:00 | Web Serial to the Arduino. Same three patterns. Tape the code to the lamp and clip the camera. | `POST /api/devices` mints a code with Gemini, inserts it only if Tiger does not already have it. Coach card from aggregate numbers. |
-| 8:00–9:30 | Copy on the monitor page: the picture stays on this computer. Suppress alerts when the face is missing. | Empty, loading, and error states. Confirm a second code cannot see the first code's rows. |
+| 8:00–9:30 | Monitor copy: frames go to Perceptron Mk1.5, and Tiger stores numbers. Suppress alerts when the face is missing or the API errors. | Empty, loading, and error states. Confirm a second code cannot see the first code's rows. |
 | 9:30–11:00 | One full pass on a single laptop. Fix the single worst bug. No new charts. | Same. |
 | 11:00–12:30 | Pitch bullets and the 90-second script below. | Deploy. DNS from GoDaddy if it is quick. If the deploy fights you, stop and keep localhost as the demo. |
 | 12:30–1:30 | Record the backup video while it works. Charge every battery. | Same. |
 | 1:30–7:30 | Sleep. A broken deploy is a morning problem. | Sleep. |
-| 7:30–9:00 | Venue wifi, camera permission, Chrome, model files already local so the CDN can be down. | Reload the dashboard. Re-seed if the database was the thing that failed. |
+| 7:30–9:00 | Venue wifi, camera permission, Chrome, and a fresh Perceptron call so you know the key still works. | Reload the dashboard. Re-seed if the database was the thing that failed. |
 | 9:00–9:30 | One timed rehearsal out loud. | One timed rehearsal out loud. |
 | 9:30–10:00 | Freeze. Tape, water, charger, backup video queued. | Freeze. |
 
@@ -64,106 +70,120 @@ app/api/series/route.ts       GET samples for one device_id
 app/api/devices/route.ts      POST mint a code, GET check a code
 app/api/coach/route.ts        POST aggregates to Gemini
 app/api/seed/route.ts         dev-only seed, guarded by SEED_ENABLED=1
-lib/vision.ts                 MediaPipe load + landmark reads
-lib/scoring.ts                blink edges, perceptron, 1–10 score
-lib/alerts.ts                 state machine
+app/api/perceive/route.ts     frames in, Mk1.5 JSON out. Holds the API key.
+lib/perceive.ts               request body, schema, token-spend cap
+lib/alerts.ts                 blink clock and posture streak, from Mk1.5 numbers
 lib/db.ts                     Tiger or JSONL
 lib/gemini.ts                 codes and coach text
 lib/beep.ts                   Web Audio patterns
 lib/serial.ts                 Web Serial writer
 arduino/perch_buzzer/perch_buzzer.ino
-public/models/face_landmarker.task
-public/models/pose_landmarker_lite.task
 .env.local                    not committed
 ```
 
 Create the app with the Next.js prompt (TypeScript, Tailwind, App Router, no `src` directory). Then:
 
 ```bash
-npm install @mediapipe/tasks-vision pg recharts
+npm install pg recharts
 ```
 
-Download these into `public/models` while you still have reliable wifi. Load them from `/models/...`, not from Google's storage, at the venue.
-
-- Face: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task`
-- Pose: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task`
-
-WASM files come from the npm package (`@mediapipe/tasks-vision` dist wasm). Point `FilesetResolver.forVisionTasks` at a copy you also vendor under `public/wasm` if the venue blocks the CDN.
+The Python SDK (`pip install "perceptron>=0.4.0"`) is the documented client. This plan uses `fetch` from the Next route so there is one server and the key stays off the browser. Switch to the SDK only if the HTTP shape fights you.
 
 `.env.local`:
 
 ```
 DATABASE_URL=postgres://USER:PASS@HOST:6432/tsdb?sslmode=require
+PERCEPTRON_API_KEY=
+PERCEPTRON_MODEL=perceptron-mk1.5
 GEMINI_API_KEY=
 GEMINI_MODEL=
 SEED_ENABLED=1
 ```
 
-Use the pooled Tiger connection string (the pooler port, often 6432). Copy `GEMINI_MODEL` from the model id AI Studio shows for Flash. Leave the key unset until the coach route exists. The monitor page must not import `lib/gemini.ts` or `lib/db.ts`.
+Use the pooled Tiger connection string (the pooler port, often 6432). Copy `GEMINI_MODEL` from the model id AI Studio shows for Flash. Leave the Gemini key unset until the coach route exists. The monitor page must not import `lib/gemini.ts`, `lib/db.ts`, or the Perceptron key.
 
 ## Vision
 
-Chrome only. `getUserMedia` at 640x480 is enough. Run detection on `requestAnimationFrame`, and remember the latest metrics in a ref. POST on a 5-second timer.
+Chrome. `getUserMedia`, draw into a canvas, and export JPEGs at a fixed size (384 by 288 is a good start). Every frame in one request must share dimensions. Keep the last few seconds in a ring buffer at 4 frames per second. Do not call the API on every camera frame.
 
-Face Landmarker: `outputFaceBlendshapes: true`, `runningMode: "VIDEO"`, one face. Read `eyeBlinkLeft` and `eyeBlinkRight` from `faceBlendshapes[0].categories` (`categoryName`, `score`).
+`POST /api/perceive` accepts `{ "frames": [{ "jpeg_base64": "...", "timestamp_ms": 0 }, ...] }` with 8 frames and timestamps `0, 250, 500, ... 1750`. The route calls Perceptron and returns the parsed JSON plus `usage.prompt_tokens`. The browser never sees the API key.
 
-A frame is a blink closure when the average of the two scores is above `0.45`. A blink event is the rising edge, with a 200ms refractory period so one blink is one count. `secondsSinceBlink` is time since that edge. `blinksPerMinute` is the count of edges in the last 60 seconds.
+One request in flight. When it returns, send the next non-overlapping window. If the round trip took so long that the buffer holds more than about 4 seconds, downsample to 8 frames spread across that gap and treat the sample as degraded: update the score, and do not fire a blink alert for a gap that wide. Dropping frames on the floor is better than a queue that falls behind.
 
-If blendshapes fail to load, fall back to eye aspect ratio on the eyelid landmarks. You should not need this if the `.task` file loads.
+First call of the night, before the loop exists: time it. If `reasoning_effort: "none"` returns 400, omit the field. If the round trip is over about 4 seconds, send 6 frames instead of 8 and keep the window at 2 seconds. Log `usage.prompt_tokens`. Input is $0.15 per million tokens and output is $1.50 per million on the Mk1.5 card. Extrapolate from that first call. The route should stop the loop and show the spend when the session crosses about $3, with a button to raise the cap. Turn Watching off while you eat.
 
-Pose Landmarker lite, one pose. Landmarks: `11` left shoulder, `12` right shoulder, `7` left ear, `8` right ear, `0` nose.
+Request shape:
 
-Shoulder tilt in degrees, 0 meaning level:
-
-```ts
-const tilt = Math.abs(Math.atan2(rightShoulder.y - leftShoulder.y, rightShoulder.x - leftShoulder.x) * 180 / Math.PI);
-const shoulderTiltDeg = Math.min(tilt, Math.abs(180 - tilt));
-```
-
-Calibration ("Sit upright and look at the screen", collect ~3 seconds, store medians):
-
-- `baseTilt` = median `shoulderTiltDeg`
-- `baseEarY` = median of the ear midpoint `y`
-- `baseDepth` = median of `nose.z - earMidpoint.z`
-
-Features, each clamped to 0..1:
-
-```ts
-const tiltF = clamp((shoulderTiltDeg - baseTilt) / 12, 0, 1);
-const dropF = clamp((earMidY - baseEarY) / 0.08, 0, 1);     // y grows downward
-const forwardF = clamp((baseDepth - (nose.z - earMidZ)) / 0.08, 0, 1);
-```
-
-The posture head is a perceptron on these three features. This is the model you train. MediaPipe is the pretrained vision front end (the model file is the "computer vision" piece). You do not download a posture dataset, and you do not train on pixels.
-
-Initial weights, before any labels, so the score works the moment calibration finishes:
-
-```ts
-let w = [0.35, 0.40, 0.25]; // tilt, forward, drop
-```
-
-```ts
-const x = [tiltF, forwardF, dropF];
-const penalty = w[0] * x[0] + w[1] * x[1] + w[2] * x[2]; // 0..1
-const postureScore = clamp(Math.round(10 - 9 * penalty), 1, 10);
-```
-
-Two buttons, Good and Slouch, apply the perceptron update. Label `1` means slouch, `0` means upright. Prediction is `penalty > 0.5`.
-
-```ts
-const y = label === "slouch" ? 1 : 0;
-const yHat = penalty > 0.5 ? 1 : 0;
-if (y !== yHat) {
-  const lr = 0.15;
-  for (let i = 0; i < 3; i++) w[i] = Math.max(0, w[i] + lr * (y - yHat) * x[i]);
-  const sum = w[0] + w[1] + w[2] || 1;
-  w = w.map((v) => v / sum);
+```json
+{
+  "model": "perceptron-mk1.5",
+  "reasoning_effort": "none",
+  "max_completion_tokens": 200,
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "desk_state",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "face_visible": { "type": "boolean" },
+          "blink_count": { "type": "integer" },
+          "posture_score": { "type": "integer" },
+          "head": { "type": "string", "enum": ["upright", "forward", "unknown"] },
+          "shoulders": { "type": "string", "enum": ["level", "tilted", "unknown"] }
+        },
+        "required": ["face_visible", "blink_count", "posture_score", "head", "shoulders"]
+      }
+    }
+  },
+  "messages": [{
+    "role": "user",
+    "content": [
+      {
+        "type": "video_frames",
+        "video_frames": {
+          "frames": [
+            { "image_url": { "url": "data:image/jpeg;base64,..." }, "timestamp_ms": 0 }
+          ]
+        }
+      },
+      { "type": "text", "text": "PROMPT BELOW" }
+    ]
+  }]
 }
 ```
 
-Renormalizing keeps the 1–10 scale stable. Ship the initial weights even if nobody presses Good or Slouch. Mention that in the pitch: the geometry works immediately, and the perceptron only nudges the weights for this person's chair and camera.
+Prompt:
 
-No face for 1 second: show "Step into frame", freeze `secondsSinceBlink`, and do not buzz. Multiple people: Face Landmarker is already set to one face. Aim the camera so a passerby is not the largest face.
+```
+These frames are one webcam clip of a person at a laptop, in timestamp order, about 250ms apart.
+blink_count is how many times the eyelids fully close and open again. Looking down is not a blink.
+posture_score is an integer from 1 to 10 for the last frame. 10 is upright, head over the shoulders. 1 is a deep slouch or the head pushed at the screen.
+If no face is visible, face_visible is false, blink_count is 0, posture_score is 5, head and shoulders are unknown.
+Do not identify the person.
+```
+
+Clamp in the route: `blink_count` to 0–6, `posture_score` to 1–10. Require `finish_reason === "stop"` before using the JSON. A `length` finish is an incomplete answer. Discard it.
+
+Send inline data URLs. Skip the Files API so you are not leaving uploads on Perceptron's storage.
+
+The clock stays local, using the time the clip ended, not the time the response arrived. Otherwise model latency looks like a stare.
+
+```ts
+if (!faceVisible) {
+  // freeze secondsSinceBlink, show "Step into frame", no buzz
+} else if (blinkCount > 0) {
+  lastBlinkAt = clipEndedAt;
+}
+secondsSinceBlink = (clipEndedAt - lastBlinkAt) / 1000;
+blinksPerMinute = sum of blink_count over clips that ended in the last 60s;
+```
+
+Three posture scores in a row at 4 or below is the slouch streak. A missing face or a failed request resets nothing and fires nothing. Aim the camera so a passerby is not the person in frame. The prompt does not ask the model to choose among faces. If the booth is crowded, crop the canvas to the chair before you encode.
+
+Store `head` and `shoulders` as text next to the integer score. The score is Mk1.5's number. There is no local weight vector to tune tonight.
 
 ## Alerts
 
@@ -171,14 +191,13 @@ Constants:
 
 | Name | Value | Why |
 | --- | --- | --- |
-| Blink gap | 8 seconds | Long enough that a normal pause is quiet. Short enough to demo. |
-| Blink refractory | 200 ms | One physical blink, one count. |
+| Blink gap | 8 seconds by clip-end time | Long enough that a normal pause is quiet. Short enough to demo. |
 | Bad posture | score ≤ 4 | Obvious slouch, not a fidget. |
-| Posture hold | 20 seconds | Ignores reaching for a cup. |
+| Posture hold | 3 scores in a row | About two or three windows. Ignores a reach for a cup. |
 | Cooldown per alert | 45 seconds | Separate timers for blink and posture. |
 | Break interval | 20 minutes | The 20-20-20 rule. |
-| Break length | 20 seconds | Look away. Alerts suppressed the whole time. |
-| Sample period | 5 seconds | 720 rows an hour. Fine for a hypertable. |
+| Break length | 20 seconds | Look away. Alerts suppressed the whole time. Do not call Mk1.5 during the break. |
+| Sample period | one row per Mk1.5 response | A few hundred rows an hour. Fine for a hypertable. |
 
 Patterns:
 
@@ -267,9 +286,8 @@ CREATE TABLE samples (
   seconds_since_blink  REAL NOT NULL,
   blinks_per_minute    REAL NOT NULL,
   posture_score        SMALLINT NOT NULL CHECK (posture_score BETWEEN 1 AND 10),
-  shoulder_tilt_deg    REAL,
-  head_forward         REAL,
-  head_drop            REAL,
+  head_state           TEXT,
+  shoulder_state       TEXT,
   alert                TEXT
 );
 
@@ -278,15 +296,15 @@ SELECT create_hypertable('samples', 'time', if_not_exists => TRUE);
 CREATE INDEX samples_device_time ON samples (device_id, time DESC);
 ```
 
-`head_forward` and `head_drop` are the 0..1 features, useful when a judge asks why a score moved. They are still numbers.
+`head_state` and `shoulder_state` are the words Mk1.5 returned (`upright` / `forward` / `unknown`, and `level` / `tilted` / `unknown`). They explain a score when a judge asks. They are still not images.
 
 Inserts and reads take `device_id` as `$1`. There is no route that lists devices.
 
 ```sql
 INSERT INTO samples (
   time, device_id, seconds_since_blink, blinks_per_minute,
-  posture_score, shoulder_tilt_deg, head_forward, head_drop, alert
-) VALUES (now(), $1, $2, $3, $4, $5, $6, $7, $8);
+  posture_score, head_state, shoulder_state, alert
+) VALUES (now(), $1, $2, $3, $4, $5, $6, $7);
 
 SELECT time, seconds_since_blink, blinks_per_minute, posture_score, alert
 FROM samples
@@ -316,9 +334,8 @@ Sample body the browser sends:
   "seconds_since_blink": 6.2,
   "blinks_per_minute": 11,
   "posture_score": 8,
-  "shoulder_tilt_deg": 3.1,
-  "head_forward": 0.12,
-  "head_drop": 0.05,
+  "head_state": "upright",
+  "shoulder_state": "level",
   "alert": null
 }
 ```
@@ -379,9 +396,9 @@ Poll every 5 seconds while a code is on screen so the live demo moves. Y axes la
 Monitor page copy, short:
 
 - Title: Perch
-- Line under it: Blinks and posture, measured on this computer. The lamp only buzzes. Nothing pictorial is uploaded.
+- Line under it: Perceptron Mk1.5 scores blinks and posture. This site and the database store numbers. Frames are not kept.
 - Big numbers: seconds since a blink, blinks this minute, posture out of 10.
-- Buttons: Calibrate upright, Connect buzzer, Start 20-second break, New device code.
+- Buttons: Watching, Connect buzzer, Start 20-second break, New device code.
 
 ## GoDaddy and deploy
 
@@ -393,7 +410,7 @@ Add `data/` and `.env.local` to `.gitignore` before the first real commit of the
 
 ## 90-second demo
 
-1. Lamp in frame, code visible on tape. "This clips to a lamp. The laptop measures. The lamp buzzes. The site only receives numbers."
+1. Lamp in frame, code visible on tape. "This clips to a lamp. Perceptron Mk1.5 reads a two-second burst and returns numbers. The lamp buzzes. The site only stores those numbers."
 2. Dashboard already open on `demo-otter-42` so charts exist if live data hiccups. Then type the lamp's code.
 3. Blink twice. Counter moves by two.
 4. Stare. One double beep near 8 seconds. Point at seconds-since-blink.
@@ -401,15 +418,15 @@ Add `data/` and `.env.local` to `.gitignore` before the first real commit of the
 6. Start the 20-second break. Turn away from the camera. The other beep stays silent. Come back.
 7. Type `demo-otter-42` or a garbage code. Different person, different numbers, or "not issued". Your rows did not follow you.
 
-Then one sentence: codes are minted by Gemini and accepted only when Tiger Data has not issued them. The picture never goes there.
+Then one sentence: Gemini proposes the code, Tiger Data accepts it once, and neither of them receives a frame.
 
 ## Pitch, six lines
 
 1. At a screen, blink rate falls and posture folds. People notice when the headache is already there.
 2. Perch is a clip for the lamp already on the desk.
 3. Live demo.
-4. MediaPipe landmarks stay in the browser. A three-input perceptron turns them into a 1–10 posture score and can update from a couple of labeled poses at the desk.
-5. Every 5 seconds Tiger Data stores the numbers for that device code. The site will not draw a chart without the code.
+4. Perceptron Mk1.5, the hosted model in the Mk line, returns a blink count and a 1–10 posture score from each two-second burst. Isaac 0.1 and 0.2 are retired on that API. We checked `/v1/models`.
+5. Each response becomes one Tiger Data row for that device code. The site will not draw a chart without the code.
 6. The buzzer is the product. The website is the record.
 
 ## Morning checks
@@ -417,17 +434,20 @@ Then one sentence: codes are minted by Gemini and accepted only when Tiger Data 
 - Cover the camera: "Step into frame", no beep.
 - One blink, one count.
 - Stare: a single blink reminder, then silence for the cooldown.
-- Slouch 20 seconds: the other sound.
+- Slouch through three bad scores: the other sound.
 - Break button: countdown, no other sounds, LED on if the board is connected.
 - Second code does not show the first code's rows.
-- Network log on `POST /api/samples` is the JSON above, with no image field.
+- `POST /api/samples` is the JSON above, with no image field. `POST /api/perceive` is the only request that contains frames.
 - Unplug the Arduino: the laptop still beeps.
+- Perceptron errors or a covered camera: "Step into frame" or "Perceptron unreachable", and no beep.
 
 ## Time sinks
 
-- Vision on the Arduino or an ESP32-CAM. There is not enough time or RAM for face landmarks. The board is a buzzer.
+- Vision on the Arduino or an ESP32-CAM. The board is a buzzer. Mk1.5 runs in Perceptron's cloud.
+- Self-hosting Isaac 0.5, or calling `isaac-0.1` / `isaac-0.2-1b` / `isaac-0.2-2b-preview` and debugging the 404. Check `/v1/models` once, then use the id that is actually listed.
+- Sending one JPEG every second and expecting blinks. A blink is shorter than the gap between snapshots. Send a two-second `video_frames` burst.
 - Asking Gemini to generate SQL on every page view. You will debug invented queries instead of demoing.
 - Building the charts inside GoDaddy Website Builder. DNS or an iframe only.
-- Training a model on a downloaded image set. The perceptron on three numbers is the training story, and it matches the privacy rule.
+- Leaving the watch loop on while you eat. Read `usage.prompt_tokens` from the first call, extrapolate, and keep the on-screen spend cap.
 - A new alert idea after 11pm. Write it in the README and leave the code alone.
 - Skipping sleep to chase the deploy. The local demo is the grade.
