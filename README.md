@@ -1,4 +1,39 @@
-# Perch — DubHacks build plan
+# Perch
+
+The laptop camera watches. Perceptron Mk1.5 scores blinks and posture. An Arduino Uno buzzes.
+
+## Run the camera and the buzzer
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+Put your key in `.env.local`:
+
+```
+PERCEPTRON_API_KEY=sk-...
+PERCEPTRON_MODEL=perceptron-mk1.5
+```
+
+```bash
+npm run dev
+```
+
+Open [http://127.0.0.1:43123](http://127.0.0.1:43123) in Chrome or Edge.
+
+1. Flash `arduino/perch_buzzer/perch_buzzer.ino` to the Uno. Piezo + goes to pin 8, piezo − to GND. An LED from pin 7 to GND through 220Ω is optional.
+2. Click **Connect Uno** and choose the board. The sketch prints `perch` when the port opens.
+3. Click **Start watching** and allow the camera. Every two seconds the page sends eight JPEGs to `/api/perceive`, which calls Mk1.5. The key stays on the server.
+4. A stare of about 8 seconds sends `B` (two high beeps). Three low posture scores in a row send `P` (three low beeps). **20-second break** sends `R` and pauses scoring.
+5. Until the Uno is connected, the same patterns play on the laptop speaker. **Test blink buzz** and **Test posture buzz** check the wire without calling Mk1.5.
+6. **Simulate Mk1.5** runs the same rules with fake scores if the key is not ready. Turn it off for the real demo.
+
+Scoring stops automatically around $3 of Mk1.5 usage (input $0.15 / million tokens, output $1.50 / million). Restart the page to reset the counter.
+
+`npm test` checks the blink clock, posture streak, break, and frame window.
+
+## Build plan
 
 A lamp-clipped desk assistant. Perceptron Mk1.5 reads a short burst of webcam frames and returns a blink count and a posture score. The lamp buzzes. The site shows numeric history for the code printed on the device.
 
