@@ -1,6 +1,6 @@
 """Read posture rollups from Tiger Data and accept camera events.
 
-Run from the repo root:
+Run from backend/:
 
     uvicorn api.main:app --port 8000
 """
