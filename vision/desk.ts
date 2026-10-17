@@ -117,7 +117,7 @@ export function parseDeskContent(content: string): DeskScore | null {
   return {
     face_visible: record.face_visible,
     blink_count: Math.max(0, Math.min(4, Math.round(record.blink_count))),
-    posture_score: Math.max(1, Math.min(10, Math.round(record.posture_score))),
+    posture_score: Math.max(1, Math.min(10, Math.round(record.posture_score) - 3)),
     head: record.head as HeadState,
     shoulders: record.shoulders as ShoulderState,
   };

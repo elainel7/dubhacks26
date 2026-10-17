@@ -236,6 +236,18 @@ test("desk JSON is clamped and rejected when a field is missing", () => {
     head: "forward",
     shoulders: "tilted",
   });
+  assert.deepEqual(
+    parseDeskContent(
+      '{"face_visible":true,"blink_count":0,"posture_score":8,"head":"upright","shoulders":"level"}',
+    ),
+    {
+      face_visible: true,
+      blink_count: 0,
+      posture_score: 5,
+      head: "upright",
+      shoulders: "level",
+    },
+  );
   assert.equal(parseDeskContent('{"face_visible":true}'), null);
   assert.ok(tokenCost(1_000_000, 0) - 0.15 < 1e-9);
 });
