@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,9 +50,13 @@ export function CameraView() {
   const [status, setStatus] = useState("Allow the camera. Each sheet is one second of video, about 30 frames.");
   const [metrics, setMetrics] = useState<AlertState>(stateRef.current);
   const [spend, setSpend] = useState(0);
-  const [serialLabel, setSerialLabel] = useState(
-    serialAvailable() ? "Uno not connected" : "Web Serial needs Chrome or Edge",
+  const serialReady = useSyncExternalStore(
+    () => () => {},
+    () => serialAvailable(),
+    () => false,
   );
+  const [serialNote, setSerialLabel] = useState<string | null>(null);
+  const serialLabel = serialNote ?? (serialReady ? "Uno not connected" : "Web Serial needs Chrome or Edge");
   const [unoReady, setUnoReady] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
   const [breakLeft, setBreakLeft] = useState<number | null>(null);
