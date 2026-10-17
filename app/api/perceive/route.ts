@@ -18,7 +18,7 @@ function readSheet(value: unknown) {
   if (record.image_base64.length === 0 || record.image_base64.length > MAX_IMAGE_CHARS) return null;
   const panelCount = record.panel_count;
   const durationMs = record.duration_ms;
-  if (typeof panelCount !== "number" || panelCount < 2 || panelCount > 8) return null;
+  if (typeof panelCount !== "number" || panelCount < 2 || panelCount > 30) return null;
   if (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs < 0) return null;
   return { imageBase64: record.image_base64, panelCount, durationMs: Math.round(durationMs) };
 }

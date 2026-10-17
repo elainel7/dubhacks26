@@ -1,5 +1,5 @@
 export const BLINK_GAP_MS = 8_000;
-export const POSTURE_BAD_AT = 4;
+export const POSTURE_BAD_AT = 6;
 export const POSTURE_STREAK = 3;
 export const COOLDOWN_MS = 45_000;
 export const BREAK_EVERY_MS = 20 * 60 * 1000;

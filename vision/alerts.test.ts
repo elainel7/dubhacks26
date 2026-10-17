@@ -84,6 +84,32 @@ test("a missing face freezes the clock and stays quiet", () => {
   assert.equal(hidden.state.postureScore, null);
 });
 
+test("a score of 6 is already bad posture", () => {
+  let state = initialAlertState(0);
+  let buzz: string | null = null;
+  for (let i = 1; i <= 3; i++) {
+    const step = applyReading(
+      state,
+      reading({ postureScore: 6, blinkCount: 1, clipEndedAt: i * 1_000 }),
+      i * 1_000,
+    );
+    state = step.state;
+    buzz = step.buzz;
+  }
+  assert.equal(buzz, "P");
+
+  let upright = initialAlertState(0);
+  for (let i = 1; i <= 3; i++) {
+    const step = applyReading(
+      upright,
+      reading({ postureScore: 7, blinkCount: 1, clipEndedAt: i * 1_000 }),
+      i * 1_000,
+    );
+    upright = step.state;
+    assert.equal(step.buzz, null);
+  }
+});
+
 test("three low scores buzz posture, and the cooldown holds", () => {
   let state = initialAlertState(0);
   let buzz: string | null = null;
@@ -205,7 +231,7 @@ test("desk JSON is clamped and rejected when a field is missing", () => {
   );
   assert.deepEqual(parsed, {
     face_visible: true,
-    blink_count: 6,
+    blink_count: 4,
     posture_score: 1,
     head: "forward",
     shoulders: "tilted",

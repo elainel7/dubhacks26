@@ -1,14 +1,12 @@
-export const SHEET_COLS = 4;
-export const SHEET_ROWS = 2;
-export const SHEET_PANELS = SHEET_COLS * SHEET_ROWS;
-/** One sheet per this long, so a blink is not spread across too many seconds. */
-export const SHEET_MIN_SPAN_MS = 1_500;
-/** If scoring falls behind, keep only the latest slice. Panels stay about 0.25s apart. */
-export const SHEET_WINDOW_MS = 2_500;
+export const SHEET_COLS = 6;
+export const SHEET_PANELS = 30;
+/** One sheet is about one second of video, so a blink covers several panels. */
+export const SHEET_MIN_SPAN_MS = 800;
+export const SHEET_WINDOW_MS = 1_000;
 
-const CELL_W = 240;
-const CELL_H = 180;
-const LABEL_H = 18;
+const CELL_W = 160;
+const CELL_H = 120;
+const LABEL_H = 14;
 
 function loadJpeg(jpegBase64: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -25,9 +23,10 @@ export async function renderContactSheet(frames: { jpeg: string; t: number }[]) 
   const startedAt = frames[0].t;
   const clipEndedAt = frames[frames.length - 1].t;
   const images = await Promise.all(frames.map((frame) => loadJpeg(frame.jpeg)));
+  const rows = Math.ceil(frames.length / SHEET_COLS);
   const canvas = document.createElement("canvas");
   canvas.width = SHEET_COLS * CELL_W;
-  canvas.height = SHEET_ROWS * (CELL_H + LABEL_H);
+  canvas.height = rows * (CELL_H + LABEL_H);
   const context = canvas.getContext("2d");
   if (!context) return null;
 

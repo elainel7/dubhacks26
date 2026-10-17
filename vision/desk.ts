@@ -16,18 +16,22 @@ const HEADS: readonly HeadState[] = ["upright", "forward", "unknown"];
 const SHOULDERS: readonly ShoulderState[] = ["level", "tilted", "unknown"];
 
 export function contactSheetPrompt(panelCount: number, durationMs: number) {
-  const seconds = Math.max(1, Math.round(durationMs / 1000));
+  const seconds = Math.max(0.2, durationMs / 1000).toFixed(1);
   return [
     `This image is one contact sheet of ${panelCount} webcam panels of a person at a laptop.`,
     "Read the panels left to right, then top to bottom. Each panel is labeled with seconds from the start of the sheet.",
-    `The sheet covers about ${seconds} seconds.`,
-    "The panels are about a quarter of a second apart.",
-    "blink_count is how many blinks happen across the sheet.",
-    "Eyes shut in one panel and open in the panels next to it is one blink.",
-    "Looking down is not a blink. A blink is short.",
-    "posture_score is an integer from 1 to 10 for the last panel.",
-    "10 is upright, with the head over the shoulders.",
-    "1 is a deep slouch or the head pushed toward the screen.",
+    `The sheet covers ${seconds} seconds.`,
+    "The panels are consecutive video frames at about 30 per second.",
+    "blink_count is the number of blinks, not the number of panels with closed eyes.",
+    "One blink is a run of panels where the eyelids close and then open.",
+    "The person may wear glasses. Score the eyelids, not the lenses or the glare.",
+    "A bright reflection on the glasses is not an open eye.",
+    "Looking down is not a blink.",
+    "posture_score is an integer from 1 to 10 for the last panel only.",
+    "10 is rare: ears over the shoulders, chin slightly tucked, neck long, torso not leaning toward the screen.",
+    "7 is already poor: head forward of the shoulders, rounded upper back, or a lean toward the laptop.",
+    "4 is a clear slouch. 1 is collapsed onto the desk.",
+    "Do not give 8, 9, or 10 to someone whose head is in front of their shoulders.",
     "If no face is visible, face_visible is false, blink_count is 0, posture_score is 5, and head and shoulders are unknown.",
     "Do not identify the person.",
   ].join(" ");
@@ -112,7 +116,7 @@ export function parseDeskContent(content: string): DeskScore | null {
 
   return {
     face_visible: record.face_visible,
-    blink_count: Math.max(0, Math.min(6, Math.round(record.blink_count))),
+    blink_count: Math.max(0, Math.min(4, Math.round(record.blink_count))),
     posture_score: Math.max(1, Math.min(10, Math.round(record.posture_score))),
     head: record.head as HeadState,
     shoulders: record.shoulders as ShoulderState,
