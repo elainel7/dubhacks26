@@ -1,17 +1,23 @@
-# DubHacks 2026
+# Perch
+
+No more hunching. Perch is a desk companion: the camera scores posture, and the site shows how much of the time a device id sat upright.
 
 Two parts live in this repo.
 
-- **Perch** opens on a device id. That page shows only that buzzer's numbers. **Camera** in the nav is a separate preview.
-- **Posture API** stores numeric posture rows in Tiger Data. The static dashboard is `index.html` at the repo root. Instructions follow the Perch section.
+- **Perch** (Next.js) opens on a device id. `/device/[deviceId]` shows only that device's posture: percent upright, good and bad posture, and the most common problem. **Camera** in the nav is a separate preview at `/camera`.
+- **Posture API** stores numeric posture rows in Tiger Data. The static dashboard is `index.html` at the repo root, branded Perch, and published to nohunch.club. Instructions follow the Perch section.
 
 ## Layout
 
 ```
 backend/     FastAPI app (api/), SQL (db/), seed script (scripts/), Python tests (tests/), requirements.txt, .env.example
-web/         static posture dashboard (index.html)
+web/         static Perch dashboard (index.html)
 shared/      empty placeholder for code used by more than one app
 index.html   copy of web/index.html
+app/         Next.js pages: /, /device/[deviceId], /camera
+components/  Perch UI (kebab-case files, PascalCase components)
+lib/         device id, serial, and sound helpers
+vision/      Perceptron scoring
 render.yaml  Render blueprint; posture-api runs with root directory backend
 ```
 
@@ -41,9 +47,9 @@ npm run dev
 
 Open [http://localhost:43123](http://localhost:43123) in Chrome or Edge.
 
-1. The first page asks for the buzzer's device id and opens the numbers for that id.
-2. **Camera** in the nav shows the webcam. Click **Allow the camera**. A stare of about 8 seconds beeps twice. Three low posture scores in a row beep three times. A 20-minute stretch starts a 20-second break beep. There is no fake score mode.
-3. Perceptron code lives in `vision/`. The camera packs about 30 frames from one second into one contact sheet. A posture score of 6 or below is already poor. Frames are not stored or shown on the numbers page.
+1. The first page asks for a device id and opens the posture chart for that id.
+2. **Camera** in the nav (`/camera`) shows the webcam. Click **Allow the camera**. A stare of about 8 seconds beeps twice. Three low posture scores in a row beep three times. A 20-minute stretch starts a 20-second break beep. There is no fake score mode.
+3. Perceptron code lives in `vision/`. The camera packs about 30 frames from one second into one contact sheet. A posture score of 6 or below is already poor. Frames are not stored or shown on the device page.
 4. Flash `arduino/perch_buzzer/perch_buzzer.ino` when the Uno is here. Piezo + goes to pin 8, piezo − to GND. **Connect Uno** on the camera page sends the same beeps to the board.
 
 Scoring stops automatically around $3 of Mk1.5 usage (input $0.15 / million tokens, output $1.50 / million). Restart the page to reset the counter.
@@ -506,7 +512,7 @@ Then one sentence: Gemini proposes the code, Tiger Data accepts it once, and nei
 
 ## Database
 
-Posture labels from the camera feed are stored in Tiger Data (TimescaleDB on Postgres). Dashboards read per-user rollups; user IDs are hardcoded per user. Schema, the one-minute continuous aggregate, and a seed script live in `backend/`.
+Posture labels from the camera feed are stored in Tiger Data (TimescaleDB on Postgres). The pages call each id a device id. The API and the database still name that field `user_id`. Seeded device ids are `user_1` and `user_2`. Schema, the one-minute continuous aggregate, and a seed script live in `backend/`.
 
 Copy `backend/.env.example` to `backend/.env` and set `DATABASE_URL`. `.env` is gitignored — do not commit credentials. From the repo root:
 
@@ -559,13 +565,13 @@ curl -s -X POST "http://127.0.0.1:8000/events" \
   -d '{"time":"2026-10-17T20:00:00Z","user_id":"user_1","label":"good","confidence":0.95}'
 ```
 
-CORS is open so a static site on another origin can call the API. There is no auth; user ids are plain strings such as `user_1` and `user_2`.
+CORS is open so a static site on another origin can call the API. There is no auth. A device id is a plain string such as `user_1` or `user_2`, sent on the wire as `user_id`. Do not rename the live paths `/users/{user_id}/timeline`, `/users/{user_id}/summary`, or `POST /events`, or the database columns.
 
 A new event lands in `posture_events` immediately. It shows up in `posture_per_minute` after the refresh policy runs (about a minute), or when `backend/scripts/seed.py` refreshes the aggregate.
 
 ## Dashboard
 
-`web/index.html` is a single static page: a user selector (`user_1`, `user_2`), good-vs-bad chart, and summary stats. Chart.js is loaded from a CDN, so there is no build step.
+`web/index.html` is a single static Perch page: the same brand and tagline as the Next.js app ("No more hunching."), a device id selector (`user_1`, `user_2`), a good-vs-bad posture chart, percent upright, and the most common problem. Chart.js is loaded from a CDN, so there is no build step. The root `index.html` is a byte-identical copy.
 
 `API_BASE` at the top of `web/index.html` is the live API, with no trailing slash:
 

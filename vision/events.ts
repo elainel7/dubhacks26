@@ -46,11 +46,11 @@ export function postureConfidence(postureScore: number) {
 
 export function postureEventFromScore(
   score: Pick<DeskScore, "face_visible" | "posture_score" | "head">,
-  userId: string | null,
+  deviceId: string | null,
   at: Date = new Date(),
 ): StoredPostureEvent | null {
-  if (!userId) return null;
-  const id = normalizeDeviceId(userId);
+  if (!deviceId) return null;
+  const id = normalizeDeviceId(deviceId);
   if (!id) return null;
   const label = postureLabel(score);
   if (!label) return null;
@@ -69,9 +69,9 @@ export function parseStoredEvent(value: unknown): { event: StoredPostureEvent } 
     return { message: "Send a posture event as JSON." };
   }
   const record = value as Record<string, unknown>;
-  const userId = typeof record.user_id === "string" ? normalizeDeviceId(record.user_id) : null;
-  if (!userId) {
-    return { message: "user_id must be the device id: letters, numbers, hyphens, or underscores." };
+  const deviceId = typeof record.user_id === "string" ? normalizeDeviceId(record.user_id) : null;
+  if (!deviceId) {
+    return { message: "The device id must use letters, numbers, hyphens, or underscores." };
   }
   const label = typeof record.label === "string" ? record.label.trim() : "";
   if (!isPostureLabel(label)) {
@@ -98,7 +98,7 @@ export function parseStoredEvent(value: unknown): { event: StoredPostureEvent } 
   return {
     event: {
       time,
-      user_id: userId,
+      user_id: deviceId,
       label,
       confidence: record.confidence,
     },
