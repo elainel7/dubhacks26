@@ -2,7 +2,7 @@ import {
   buildPerceptronRequest,
   parseDeskContent,
   type DeskScore,
-} from "@/lib/desk";
+} from "@/vision/desk";
 
 const PERCEPTRON_URL = "https://api.perceptron.inc/v1/chat/completions";
 const MAX_FRAMES = 12;

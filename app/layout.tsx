@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Perch",
-  description: "Laptop camera, Perceptron Mk1.5, and an Arduino Uno buzzer.",
+  description: "Enter a buzzer id to see that device's numbers. The camera lives on its own page.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

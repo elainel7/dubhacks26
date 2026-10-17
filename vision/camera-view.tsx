@@ -7,19 +7,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   applyReading,
   initialAlertState,
-  startBreak,
   tick,
   type AlertState,
   type Buzz,
   type Reading,
   type StepResult,
-} from "@/lib/alerts";
-import { SPEND_CAP_USD, tokenCost } from "@/lib/desk";
-import { selectWindow } from "@/lib/frames";
+} from "@/vision/alerts";
+import { SPEND_CAP_USD, tokenCost } from "@/vision/desk";
+import { selectWindow } from "@/vision/frames";
 import { serialAvailable, connectUno, type UnoLink } from "@/lib/serial";
 import { playBuzz } from "@/lib/sound";
 
-type Scene = "blinking" | "staring" | "slouching";
 type Capture = { jpeg: string; t: number };
 
 const FRAME_W = 384;
@@ -30,41 +28,7 @@ function formatSeconds(value: number | null) {
   return value.toFixed(1);
 }
 
-function fakeReading(scene: Scene, now: number): Reading {
-  if (scene === "slouching") {
-    return {
-      faceVisible: true,
-      blinkCount: 0,
-      postureScore: 2,
-      head: "forward",
-      shoulders: "tilted",
-      degraded: false,
-      clipEndedAt: now,
-    };
-  }
-  if (scene === "staring") {
-    return {
-      faceVisible: true,
-      blinkCount: 0,
-      postureScore: 8,
-      head: "upright",
-      shoulders: "level",
-      degraded: false,
-      clipEndedAt: now,
-    };
-  }
-  return {
-    faceVisible: true,
-    blinkCount: 1,
-    postureScore: 8,
-    head: "upright",
-    shoulders: "level",
-    degraded: false,
-    clipEndedAt: now,
-  };
-}
-
-export function DeskMonitor() {
+export function CameraView() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -73,20 +37,15 @@ export function DeskMonitor() {
   const inFlightRef = useRef(false);
   const stateRef = useRef<AlertState>(initialAlertState(0));
   const watchingRef = useRef(false);
-  const simulateRef = useRef(false);
-  const sceneRef = useRef<Scene>("blinking");
-  const lastSimRef = useRef(0);
   const spendRef = useRef(0);
   const serialRef = useRef<UnoLink | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const buzzLockRef = useRef(Promise.resolve());
 
   const [watching, setWatching] = useState(false);
-  const [simulate, setSimulate] = useState(false);
-  const [scene, setScene] = useState<Scene>("blinking");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
-  const [status, setStatus] = useState("Camera off. The Uno is silent until you start watching.");
+  const [status, setStatus] = useState("Allow the camera. This computer beeps on its own when you stare or slouch.");
   const [metrics, setMetrics] = useState<AlertState>(stateRef.current);
   const [spend, setSpend] = useState(0);
   const [serialLabel, setSerialLabel] = useState(
@@ -99,12 +58,6 @@ export function DeskMonitor() {
   useEffect(() => {
     watchingRef.current = watching;
   }, [watching]);
-  useEffect(() => {
-    simulateRef.current = simulate;
-  }, [simulate]);
-  useEffect(() => {
-    sceneRef.current = scene;
-  }, [scene]);
 
   useEffect(() => {
     return () => {
@@ -123,7 +76,10 @@ export function DeskMonitor() {
     } else {
       setBreakLeft(null);
     }
-    if (result.buzz) void sound(result.buzz);
+    if (result.buzz) {
+      if (!serialRef.current) setStatus(`${result.note} Beeped on this computer.`);
+      void sound(result.buzz);
+    }
   }
 
   async function sound(kind: Buzz) {
@@ -167,7 +123,7 @@ export function DeskMonitor() {
       setCameraError(null);
       return true;
     } catch {
-      setCameraError("Camera permission was blocked. Allow the camera for this page, or turn on Simulate Mk1.5.");
+      setCameraError("Camera permission was blocked. Allow the camera for this page, then try again.");
       setCameraOn(false);
       return false;
     }
@@ -223,7 +179,7 @@ export function DeskMonitor() {
     if (spendRef.current >= SPEND_CAP_USD) {
       watchingRef.current = false;
       setWatching(false);
-      setStatus(`Stopped at the $${SPEND_CAP_USD.toFixed(0)} Perceptron cap. Raise it in lib/desk.ts if the demo needs more.`);
+      setStatus(`Stopped at the $${SPEND_CAP_USD.toFixed(0)} Perceptron cap. Raise it in vision/desk.ts if the demo needs more.`);
       return;
     }
 
@@ -259,7 +215,7 @@ export function DeskMonitor() {
     if (!watching) return;
 
     const captureTimer = window.setInterval(() => {
-      if (!watchingRef.current || simulateRef.current) return;
+      if (!watchingRef.current) return;
       if (stateRef.current.phase === "break") return;
       const jpeg = grab();
       if (!jpeg) return;
@@ -274,16 +230,6 @@ export function DeskMonitor() {
       void (async () => {
         if (!watchingRef.current || inFlightRef.current) return;
         if (stateRef.current.phase === "break") return;
-
-        if (simulateRef.current) {
-          const now = Date.now();
-          if (now - lastSimRef.current < 2_000) return;
-          lastSimRef.current = now;
-          const result = applyReading(stateRef.current, fakeReading(sceneRef.current, now), now);
-          commit(result);
-          if (!result.note) setStatus("Simulated window. No reminder.");
-          return;
-        }
 
         const fresh = bufferRef.current.filter((frame) => frame.t > lastSentRef.current);
         if (fresh.length < 2) return;
@@ -329,33 +275,24 @@ export function DeskMonitor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watching]);
 
-  function rememberSimulation(on: boolean, nextScene: Scene = sceneRef.current) {
-    simulateRef.current = on;
-    sceneRef.current = nextScene;
-    setSimulate(on);
-    setScene(nextScene);
-  }
-
   async function toggleWatching() {
     if (watching) {
       watchingRef.current = false;
       setWatching(false);
-      setStatus("Watching paused. The Uno will stay quiet.");
+      setStatus("Camera paused.");
       return;
     }
-    if (!simulateRef.current) {
-      setStatus("Opening the camera.");
-      const ready = await ensureCamera();
-      if (!ready) {
-        setStatus("The camera did not open. Allow it in the browser bar, or turn on Simulate Mk1.5.");
-        return;
-      }
+    setStatus("Opening the camera.");
+    const ready = await ensureCamera();
+    if (!ready) {
+      setStatus("The camera did not open. Allow it in the browser bar.");
+      return;
     }
     try {
       if (!audioRef.current) audioRef.current = new AudioContext();
       if (audioRef.current.state === "suspended") await audioRef.current.resume();
     } catch {
-      // Watching still starts. The Uno, or a later click, can make the sound.
+      // Watching still starts. A later beep can open the speaker.
     }
     const now = Date.now();
     const fresh = initialAlertState(now);
@@ -363,14 +300,9 @@ export function DeskMonitor() {
     setMetrics(fresh);
     bufferRef.current = [];
     lastSentRef.current = now;
-    lastSimRef.current = 0;
     watchingRef.current = true;
     setWatching(true);
-    setStatus(
-      simulateRef.current
-        ? "Simulated scores are running. The Uno still buzzes from those numbers."
-        : "Collecting a two-second window for Mk1.5.",
-    );
+    setStatus("Watching. This computer beeps if you stare or slouch.");
   }
 
   async function onConnect() {
@@ -392,14 +324,6 @@ export function DeskMonitor() {
     }
   }
 
-  function onBreak() {
-    if (!watchingRef.current) {
-      setStatus("Start watching before the break timer.");
-      return;
-    }
-    commit(startBreak(stateRef.current, Date.now()));
-  }
-
   const posture = metrics.postureScore === null ? "—" : String(metrics.postureScore);
   const phaseLabel =
     metrics.phase === "break"
@@ -407,22 +331,20 @@ export function DeskMonitor() {
       : metrics.phase === "no-face"
         ? "No face"
         : watching
-          ? simulate
-            ? "Simulated"
-            : "Live"
+          ? "Live"
           : "Idle";
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 py-6 md:px-6 md:py-8">
+    <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Perch</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Camera</h1>
           <Badge variant={watching ? "default" : "outline"}>{phaseLabel}</Badge>
           {unoReady ? <Badge variant="secondary">Uno</Badge> : null}
         </div>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          This computer&apos;s camera is the eye. Perceptron Mk1.5 scores blinks and posture.
-          The Arduino Uno only buzzes.
+          This page is only so you can see the webcam. Frames are sent to Perceptron and are not stored.
+          A stare or a slouch beeps on this computer until the Arduino is plugged in.
         </p>
       </header>
 
@@ -498,87 +420,20 @@ export function DeskMonitor() {
             <CardContent className="flex flex-col gap-3">
               <div className="flex flex-wrap gap-2">
                 <Button type="button" onClick={() => void toggleWatching()}>
-                  {watching ? "Stop watching" : "Start watching"}
+                  {watching ? "Stop camera" : "Allow the camera"}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => void onConnect()}>
                   Connect Uno
                 </Button>
-                <Button type="button" variant="secondary" onClick={onBreak} disabled={!watching}>
-                  20-second break
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="ghost" onClick={() => void sound("B")}>
-                  Test blink buzz
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => void sound("P")}>
-                  Test posture buzz
-                </Button>
               </div>
               <p className="text-xs text-muted-foreground">
                 Perceptron spend this session: ${spend.toFixed(3)} of ${SPEND_CAP_USD.toFixed(2)}.
-                Speaker beeps are the stand-in until the Uno is connected.
+                Beeps play here on their own. Connect Uno only when the board is plugged in.
               </p>
             </CardContent>
           </Card>
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Without an API key</CardTitle>
-          <CardDescription>
-            Simulated scores exercise the same buzzer rules. They do not call Perceptron.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-4 accent-foreground"
-              checked={simulate}
-              onChange={(event) => rememberSimulation(event.target.checked)}
-            />
-            Simulate Mk1.5
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                ["blinking", "Blinking normally"],
-                ["staring", "Staring"],
-                ["slouching", "Slouching"],
-              ] as const
-            ).map(([value, label]) => (
-              <Button
-                key={value}
-                type="button"
-                size="sm"
-                variant={simulate && scene === value ? "default" : "outline"}
-                onClick={() => rememberSimulation(true, value)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Uno wiring</CardTitle>
-          <CardDescription>Flash arduino/perch_buzzer/perch_buzzer.ino, then connect from Chrome.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className="grid gap-1 text-sm text-muted-foreground sm:grid-cols-2">
-            <li>Piezo + to pin 8, piezo − to GND</li>
-            <li>LED anode through 220Ω to pin 7, cathode to GND</li>
-            <li>B is two high beeps: blink</li>
-            <li>P is three low beeps: posture</li>
-            <li>R is a 20-second pulse: look away</li>
-            <li>USB serial at 9600. The sketch prints perch when it boots.</li>
-          </ul>
-        </CardContent>
-      </Card>
     </div>
   );
 }

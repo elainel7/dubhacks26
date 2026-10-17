@@ -1,4 +1,4 @@
-import type { Buzz } from "./alerts";
+import type { Buzz } from "@/vision/alerts";
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

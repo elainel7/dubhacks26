@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 43123 -H 0.0.0.0",
     "lint": "eslint",
-    "test": "tsx --test lib/alerts.test.ts"
+    "test": "tsx --test vision/alerts.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

@@ -2,14 +2,14 @@
 
 Two parts live in this repo.
 
-- **Perch** is the laptop camera, Perceptron Mk1.5, and the Arduino Uno buzzer. Instructions start under Perch.
+- **Perch** opens on a device id. That page shows only that buzzer's numbers. **Camera** in the nav is a separate preview.
 - **Posture API** stores numeric posture rows in Tiger Data and serves the static dashboard in `web/`. Instructions follow the Perch section.
 
 ## Perch
 
-The laptop camera watches. Perceptron Mk1.5 scores blinks and posture. An Arduino Uno buzzes.
+The laptop camera watches. Perceptron Mk1.5 scores blinks and posture. An Arduino Uno buzzes. Until the board is plugged in, the laptop speaker beeps on its own.
 
-## Run the camera and the buzzer
+## Run the site
 
 ```bash
 npm install
@@ -27,14 +27,12 @@ PERCEPTRON_MODEL=perceptron-mk1.5
 npm run dev
 ```
 
-Open [http://127.0.0.1:43123](http://127.0.0.1:43123) in Chrome or Edge.
+Open [http://localhost:43123](http://localhost:43123) in Chrome or Edge.
 
-1. Flash `arduino/perch_buzzer/perch_buzzer.ino` to the Uno. Piezo + goes to pin 8, piezo − to GND. An LED from pin 7 to GND through 220Ω is optional.
-2. Click **Connect Uno** and choose the board. The sketch prints `perch` when the port opens.
-3. Click **Start watching** and allow the camera. Every two seconds the page sends eight JPEGs to `/api/perceive`, which calls Mk1.5. The key stays on the server.
-4. A stare of about 8 seconds sends `B` (two high beeps). Three low posture scores in a row send `P` (three low beeps). **20-second break** sends `R` and pauses scoring.
-5. Until the Uno is connected, the same patterns play on the laptop speaker. **Test blink buzz** and **Test posture buzz** check the wire without calling Mk1.5.
-6. **Simulate Mk1.5** runs the same rules with fake scores if the key is not ready. Turn it off for the real demo.
+1. The first page asks for the buzzer's device id and opens the numbers for that id.
+2. **Camera** in the nav shows the webcam. Click **Allow the camera**. A stare of about 8 seconds beeps twice. Three low posture scores in a row beep three times. A 20-minute stretch starts a 20-second break beep. There is no fake score mode.
+3. Perceptron code lives in `vision/`. Frames go to Mk1.5 and are not stored or shown on the numbers page.
+4. Flash `arduino/perch_buzzer/perch_buzzer.ino` when the Uno is here. Piezo + goes to pin 8, piezo − to GND. **Connect Uno** on the camera page sends the same beeps to the board.
 
 Scoring stops automatically around $3 of Mk1.5 usage (input $0.15 / million tokens, output $1.50 / million). Restart the page to reset the counter.
 
