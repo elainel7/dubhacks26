@@ -1,6 +1,6 @@
 # perch — ESP32-S3 breadboard wiring
 
-This is how Brinda's breadboard is wired. Firmware for the board should use exactly these pins.
+This is how Brinda's breadboard is wired. `esp32/perch_esp32/perch_esp32.ino` uses these pins.
 
 ## Buzzer (active buzzer)
 | Buzzer leg | Connects to |
@@ -57,7 +57,7 @@ void setup() { lcd.begin(16, 2); }
 - All grounds are shared: the ESP32-S3's GND goes to the breadboard GND rail.
 - The 5V rail comes from the S3's 5V/VBUS pin, which is powered over USB.
 - Leave `GPIO3` and `GPIO46` unconnected (they're strapping pins).
-- The board connects to the laptop over the S3's native USB port. Arduino IDE setting: **USB CDC On Boot: Enabled**. The app currently opens the serial port at 9600 baud.
+- The board connects to the laptop over the S3's native USB port. Arduino IDE setting: **USB CDC On Boot: Enabled**. Native USB ignores baud. The website opens the port at 921600.
 
 ## Quick pin summary
 | GPIO | Part |
