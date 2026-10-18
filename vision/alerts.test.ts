@@ -12,7 +12,7 @@ import {
   tick,
   type Reading,
 } from "./alerts";
-import { parseDeskContent, tokenCost } from "./desk";
+import { contactSheetPrompt, parseDeskContent, tokenCost } from "./desk";
 import { selectWindow } from "./frames";
 
 function reading(overrides: Partial<Reading> = {}): Reading {
@@ -271,6 +271,15 @@ test("frame selection keeps both ends and flags a long span", () => {
   );
   assert.equal(tight.frames.length, 4);
   assert.equal(tight.degraded, false);
+});
+
+test("a blink is the close, even when the eyes stay shut through the end of the sheet", () => {
+  const prompt = contactSheetPrompt(4, 250);
+  assert.match(prompt, /still shut at the end of the sheet/);
+  assert.match(prompt, /Do not wait for the eyes to open again in this sheet/);
+  assert.match(prompt, /already shut in the first panel/);
+  assert.doesNotMatch(prompt, /any small panel, blink_count is at least 1/);
+  assert.doesNotMatch(prompt, /fully close and open/);
 });
 
 test("desk JSON is clamped and rejected when a field is missing", () => {
