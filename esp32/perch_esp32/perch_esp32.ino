@@ -441,7 +441,9 @@ int postJson(const char* url, const uint8_t* data, size_t length, bool bearer, S
   client.setInsecure();
   client.setTimeout(15);
   client.setHandshakeTimeout(15000);
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR < 3
   client.setBufferSizes(4096, 1024);
+#endif
   HTTPClient http;
   if (!http.begin(client, url)) return -1;
   http.setTimeout(timeoutMs);
@@ -494,7 +496,9 @@ int postPerceptron(const uint8_t* data, size_t length, char** reply, size_t* rep
   client.setInsecure();
   client.setTimeout(20);
   client.setHandshakeTimeout(20000);
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR < 3
   client.setBufferSizes(4096, 1024);
+#endif
   HTTPClient http;
   if (!http.begin(client, "https://api.perceptron.inc/v1/chat/completions")) {
     freeScratch();
