@@ -181,6 +181,8 @@ export type EspLink = {
   noteChirp: () => Promise<void>;
   /** Play the long sit-up honk. The board ignores one that arrives within 15 seconds of the last. */
   noteHonk: () => Promise<void>;
+  /** Laptop posture, 1 to 100. The board saves this instead of the model's repeated 80. */
+  notePose: (score: number) => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -368,6 +370,11 @@ export async function connectEsp32(
     noteHonk() {
       if (stopped) return Promise.resolve();
       return writeExclusive(() => writer.write(new TextEncoder().encode("honk\n"))).then(() => undefined);
+    },
+    notePose(score: number) {
+      if (stopped) return Promise.resolve();
+      const value = Math.max(1, Math.min(100, Math.round(score)));
+      return writeExclusive(() => writer.write(new TextEncoder().encode(`pose ${value}\n`))).then(() => undefined);
     },
     async close() {
       stopped = true;

@@ -7,6 +7,7 @@ export type BlinkSample = {
   /** Average of the left and right eyelid closures, from 0 open to 1 shut. */
   score: number;
   faceVisible: boolean;
+  landmarks: { x: number; y: number; z?: number }[] | null;
 };
 
 export type FaceBlink = {
@@ -37,11 +38,13 @@ type VisionModule = {
 
 function closureScore(result: LandmarkerResult): BlinkSample {
   const categories = result.faceBlendshapes?.[0]?.categories;
-  if (!result.faceLandmarks?.length || !categories?.length) {
-    return { score: 0, faceVisible: false };
+  const landmarks = result.faceLandmarks?.[0];
+  const points = Array.isArray(landmarks) ? (landmarks as { x: number; y: number; z?: number }[]) : null;
+  if (!points?.length || !categories?.length) {
+    return { score: 0, faceVisible: false, landmarks: points };
   }
   const scoreOf = (name: string) => categories.find((category) => category.categoryName === name)?.score ?? 0;
-  return { score: (scoreOf("eyeBlinkLeft") + scoreOf("eyeBlinkRight")) / 2, faceVisible: true };
+  return { score: (scoreOf("eyeBlinkLeft") + scoreOf("eyeBlinkRight")) / 2, faceVisible: true, landmarks: points };
 }
 
 /** Loaded at runtime so the Next build does not have to resolve an npm package. */

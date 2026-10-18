@@ -392,7 +392,7 @@
     <section class="chart-panel" aria-labelledby="chart-title">
       <div class="chart-heading">
         <h2 id="chart-title">Live scores</h2>
-        <p>Both charts show the last 10 minutes. Posture is scored on the board from 1 to 100, and 60 or below is poor posture. The blink chart is seconds since your eyes last opened, counted by the camera on this computer.</p>
+        <p>Both charts show the last 10 minutes. While the camera is on, posture is measured on this computer and stays at the pose you are holding. 60 or below is poor posture. The blink chart is seconds since your eyes last opened.</p>
         <p id="reminder" class="reminder" role="status">Waiting for a score.</p>
       </div>
       <div class="chart-row">
@@ -660,10 +660,88 @@
       }
     }
 
+    let latestEvents = [];
+    let postureTrack = { score: null };
+    let postureTrace = [];
+    let postureSessionStart = null;
+    let lastPosturePointAt = 0;
+
+    function clamp01(value) {
+      return Math.max(0, Math.min(1, value));
+    }
+
+    function postureFromLandmarks(points) {
+      if (!points || points.length <= 454) return null;
+      const brow = points[10];
+      const chin = points[152];
+      const nose = points[1];
+      const leftEye = points[33];
+      const rightEye = points[263];
+      const leftEar = points[234];
+      const rightEar = points[454];
+      if (!brow || !chin || !nose || !leftEye || !rightEye) return null;
+      const faceH = chin.y - brow.y;
+      if (!(faceH > 0.08)) return null;
+      const eyeY = (leftEye.y + rightEye.y) / 2;
+      const drop = (nose.y - eyeY) / faceH;
+      const midY = (brow.y + chin.y) / 2;
+      let forwardZ = 0;
+      if (typeof nose.z === "number" && leftEar && typeof leftEar.z === "number" && rightEar && typeof rightEar.z === "number") {
+        forwardZ = (leftEar.z + rightEar.z) / 2 - nose.z;
+      }
+      const dropPenalty = clamp01((drop - 0.34) / 0.12);
+      const zPenalty = clamp01((forwardZ - 0.14) / 0.12);
+      const lowPenalty = clamp01((midY - 0.58) / 0.14);
+      const sizePenalty = clamp01((faceH - 0.46) / 0.14);
+      const cues = [dropPenalty, zPenalty, lowPenalty, sizePenalty];
+      const strongest = Math.max.apply(null, cues);
+      const average = cues.reduce((sum, cue) => sum + cue, 0) / cues.length;
+      const weight = strongest * 0.8 + average * 0.2;
+      const score = Math.max(1, Math.min(100, Math.round(100 - weight * 95)));
+      return { score: score, head: score <= 60 ? "forward" : "upright" };
+    }
+
+    function notePostureSample(sample) {
+      if (sample == null || !Number.isFinite(sample)) return;
+      if (postureTrack.score == null || !Number.isFinite(postureTrack.score)) {
+        postureTrack = { score: Math.round(sample) };
+        return;
+      }
+      const keep = sample < postureTrack.score ? 0.45 : 0.9;
+      postureTrack = { score: Math.round(postureTrack.score * keep + sample * (1 - keep)) };
+    }
+
+    function postureSeries(events) {
+      const saved = Array.isArray(events) ? events : [];
+      if (!footageCollecting || !postureTrace.length || postureSessionStart == null) return saved;
+      const prior = saved.filter((event) => new Date(event.time).getTime() < postureSessionStart);
+      const live = postureTrace.map((point) => ({
+        time: new Date(point.t).toISOString(),
+        posture: point.score,
+        label: point.score <= 60 ? "slouching" : "good",
+        blink_gap: null,
+      }));
+      return prior.concat(live);
+    }
+
+    function noteCameraPosture(landmarks, now) {
+      const reading = postureFromLandmarks(landmarks);
+      notePostureSample(reading ? reading.score : null);
+      if (postureTrack.score == null) return;
+      postureNeedsSit = postureTrack.score <= 60;
+      if (now - lastPosturePointAt < 1000) return;
+      lastPosturePointAt = now;
+      postureTrace.push({ t: now, score: postureTrack.score });
+      if (postureTrace.length > 600) postureTrace = postureTrace.slice(-600);
+      queueBoardCmd("pose " + postureTrack.score + "\n");
+      if (latestEvents) renderChart(latestEvents);
+    }
+
     function renderChart(events) {
       if (typeof Chart === "undefined") return false;
       renderBlinks(events);
-      if (!events.length) {
+      const series = postureSeries(events);
+      if (!events.length && !series.length) {
         if (chart) {
           chart.destroy();
           chart = null;
@@ -675,8 +753,8 @@
         setChartMode("empty");
         return true;
       }
-      const labels = events.map((event) => formatBucket(event.time, 1));
-      const scores = events.map((event) => event.posture);
+      const labels = series.map((event) => formatBucket(event.time, 1));
+      const scores = series.map((event) => event.posture);
       const gaps = events.map((event) => {
         const saved = event.blink_gap == null || Number.isNaN(Number(event.blink_gap)) ? null : Number(event.blink_gap);
         const at = new Date(event.time).getTime();
@@ -812,11 +890,14 @@
         if (!liveRes.ok) throw new Error("API returned " + liveRes.status);
         const live = await liveRes.json();
         const events = Array.isArray(live.events) ? live.events : [];
-        renderSummary(summaryFromEvents(events));
+        latestEvents = events;
+        renderSummary(summaryFromEvents(postureSeries(events)));
         const last = events.length ? events[events.length - 1] : null;
-        postureNeedsSit = Boolean(
-          last && ((last.posture != null && last.posture <= 60) || last.label === "slouching" || last.label === "leaning_forward"),
-        );
+        if (postureTrack.score == null) {
+          postureNeedsSit = Boolean(
+            last && ((last.posture != null && last.posture <= 60) || last.label === "slouching" || last.label === "leaning_forward"),
+          );
+        }
         renderBlinks(events);
         if (!blinkWatch.marks.length && !blinkWatch.holding) {
           const notes = [];
@@ -1048,7 +1129,7 @@
       const blend = result.faceBlendshapes && result.faceBlendshapes[0];
       const categories = blend && blend.categories;
       if (!result.faceLandmarks || !result.faceLandmarks.length || !categories || !categories.length) {
-        return { score: 0, faceVisible: false };
+        return { score: 0, faceVisible: false, landmarks: null };
       }
       function scoreOf(name) {
         for (let i = 0; i < categories.length; i += 1) {
@@ -1056,7 +1137,12 @@
         }
         return 0;
       }
-      return { score: (scoreOf("eyeBlinkLeft") + scoreOf("eyeBlinkRight")) / 2, faceVisible: true };
+      const landmarks = result.faceLandmarks && result.faceLandmarks[0];
+      return {
+        score: (scoreOf("eyeBlinkLeft") + scoreOf("eyeBlinkRight")) / 2,
+        faceVisible: true,
+        landmarks: landmarks || null,
+      };
     }
 
     async function createLandmarker(vision, delegate) {
@@ -1099,6 +1185,13 @@
       return faceBlinkLoad;
     }
 
+    function resetPostureTrack() {
+      postureTrack = { score: null };
+      postureTrace = [];
+      postureSessionStart = null;
+      lastPosturePointAt = 0;
+    }
+
     function resetBlinkWatch() {
       blinkWatch = { track: { armed: true, shutFrames: 0, lastFireAt: null }, holding: false, frozenGap: null, marks: [] };
       previousBoardGap = null;
@@ -1133,6 +1226,7 @@
           return;
         }
         const wasHolding = blinkWatch.holding;
+        noteCameraPosture(sample.landmarks, Date.now());
         if (watchSample(sample.score, sample.faceVisible, Date.now())) {
           paintBlinkClock();
           queueBoardBlink();
@@ -1222,7 +1316,9 @@
         const rate = text.match(/(?:^|\s)rate=([^\s]+)/);
         const posture = text.match(/(?:^|\s)posture=([^\s]+)/);
         const head = text.match(/(?:^|\s)head=([^\s]+)/);
-        postureNeedsSit = Boolean((posture && Number(posture[1]) <= 60) || (head && head[1] === "forward"));
+        if (postureTrack.score == null) {
+          postureNeedsSit = Boolean((posture && Number(posture[1]) <= 60) || (head && head[1] === "forward"));
+        }
         if (gap) takeBoardGap(Number(gap[1]), Date.now());
         if (blinkGapNow(Date.now()) == null) {
           const gapEl = document.querySelector("#blink-gap");
@@ -1403,8 +1499,10 @@
       footageWriter = null;
       footageReader = null;
       footagePort = null;
+      resetPostureTrack();
       stopBlinkWatch();
       setFootage(false, "");
+      if (latestEvents) renderChart(latestEvents);
     }
 
     async function startFootage() {
@@ -1436,6 +1534,10 @@
         }
         video.srcObject = media;
         await video.play();
+        postureTrack = { score: null };
+        postureTrace = [];
+        postureSessionStart = Date.now();
+        lastPosturePointAt = 0;
         startBlinkWatch(video);
         footagePort = await portPromise;
         footageChosen = footagePort;
