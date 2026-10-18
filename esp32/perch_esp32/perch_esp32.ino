@@ -7,14 +7,23 @@
 // Open this file in Arduino IDE 2: esp32/perch_esp32/perch_esp32.ino
 // Copy secrets.example.h to secrets.h and fill it in. secrets.h stays off git.
 //
-// Board (ESP32-S3): ESP32S3 Dev Module, USB CDC On Boot Enabled, PSRAM Enabled.
-// Board (WROVER): ESP32 Wrover Module, PSRAM Enabled. Same 921600 baud.
-// Piezo + to GPIO 4, piezo - to GND. Optional LED on GPIO 2.
+// Board: ESP32S3 Dev Module, USB CDC On Boot Enabled, PSRAM Enabled.
+// Native USB ignores baud. The website opens the port at 921600.
 // Close the Serial Monitor before the website connects. One program holds the port.
+//
+// Breadboard pins:
+//   GPIO4  active buzzer +   (HIGH beeps, LOW is quiet). Buzzer - to GND.
+//   GPIO5  green LED, GPIO6 yellow LED, GPIO7 red LED.
+//          Each LED is GPIO -> 220 ohm -> long leg. Short leg to GND.
+//   GPIO15 button to GND. Internal pull-up. LOW means pressed.
+//   LCD1602 in 4-bit mode, no I2C: RS 8, E 9, D4 10, D5 11, D6 12, D7 13.
+//          RW to GND. VSS GND, VDD 5V, backlight A to 5V through 220 ohm.
+// Leave GPIO3 and GPIO46 unconnected.
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <LiquidCrystal.h>
 #include <esp_heap_caps.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,7 +49,13 @@ constexpr size_t kPayloadLen = 4 + kPixels;
 constexpr size_t kJpegCap = 96 * 1024;
 constexpr size_t kBodyCap = 180 * 1024;
 constexpr int kBuzzerPin = 4;
-constexpr int kLedPin = 2;
+constexpr int kGreenPin = 5;
+constexpr int kYellowPin = 6;
+constexpr int kRedPin = 7;
+constexpr int kButtonPin = 15;
+constexpr uint32_t kButtonDebounceMs = 30;
+
+LiquidCrystal lcd(8, 9, 10, 11, 12, 13);
 
 constexpr uint8_t kMagic0 = 0xA5;
 constexpr uint8_t kMagic1 = 0x5A;
@@ -94,12 +109,16 @@ static uint32_t lastApplyMs = 0;
 static uint32_t lastHelloMs = 0;
 static uint32_t lastWifiTryMs = 0;
 
-static int buzzHz[20];
+static bool buzzOn[20];
 static int buzzMs[20];
 static int buzzLen = 0;
 static int buzzIndex = 0;
 static uint32_t buzzUntil = 0;
 static bool buzzing = false;
+static bool buttonReading = false;
+static bool buttonStable = false;
+static uint32_t buttonChangeAt = 0;
+static char lcdCache[2][17] = {"", ""};
 
 enum RxState { kWait0, kWait1, kHeader, kPayload, kCrc };
 static RxState rxState = kWait0;
@@ -142,37 +161,28 @@ void hello() {
   lastHelloMs = millis();
 }
 
+void addBuzz(bool on, int ms) {
+  if (buzzLen >= 20) return;
+  buzzOn[buzzLen] = on;
+  buzzMs[buzzLen] = ms;
+  buzzLen++;
+}
+
 void startBuzz(PerchBuzz buzz) {
   buzzLen = 0;
   if (buzz == kBuzzBlink) {
-    buzzHz[0] = 1800;
-    buzzMs[0] = 80;
-    buzzHz[1] = 0;
-    buzzMs[1] = 70;
-    buzzHz[2] = 1800;
-    buzzMs[2] = 80;
-    buzzLen = 3;
+    addBuzz(true, 80);
+    addBuzz(false, 70);
+    addBuzz(true, 80);
   } else if (buzz == kBuzzPosture) {
     for (int i = 0; i < 3; i++) {
-      buzzHz[buzzLen] = 440;
-      buzzMs[buzzLen] = 120;
-      buzzLen++;
-      if (i < 2) {
-        buzzHz[buzzLen] = 0;
-        buzzMs[buzzLen] = 80;
-        buzzLen++;
-      }
+      addBuzz(true, 120);
+      if (i < 2) addBuzz(false, 80);
     }
   } else if (buzz == kBuzzBreak) {
     for (int i = 0; i < 10; i++) {
-      buzzHz[buzzLen] = 880;
-      buzzMs[buzzLen] = 180;
-      buzzLen++;
-      if (i < 9) {
-        buzzHz[buzzLen] = 0;
-        buzzMs[buzzLen] = 1800;
-        buzzLen++;
-      }
+      addBuzz(true, 180);
+      if (i < 9) addBuzz(false, 1800);
     }
   } else {
     return;
@@ -180,25 +190,115 @@ void startBuzz(PerchBuzz buzz) {
   buzzIndex = 0;
   buzzUntil = 0;
   buzzing = true;
-  digitalWrite(kLedPin, HIGH);
 }
 
 void serviceBuzz() {
-  if (!buzzing) return;
+  if (!buzzing) {
+    digitalWrite(kBuzzerPin, LOW);
+    return;
+  }
   uint32_t now = millis();
   if (buzzUntil != 0 && (int32_t)(now - buzzUntil) < 0) return;
   if (buzzIndex >= buzzLen) {
-    noTone(kBuzzerPin);
-    digitalWrite(kLedPin, LOW);
+    digitalWrite(kBuzzerPin, LOW);
     buzzing = false;
     return;
   }
-  int hz = buzzHz[buzzIndex];
+  bool on = buzzOn[buzzIndex];
   int ms = buzzMs[buzzIndex];
   buzzIndex++;
-  if (hz > 0) tone(kBuzzerPin, hz, ms);
-  else noTone(kBuzzerPin);
+  digitalWrite(kBuzzerPin, on ? HIGH : LOW);
   buzzUntil = now + (uint32_t)ms;
+}
+
+void setLeds(bool green, bool yellow, bool red) {
+  digitalWrite(kGreenPin, green ? HIGH : LOW);
+  digitalWrite(kYellowPin, yellow ? HIGH : LOW);
+  digitalWrite(kRedPin, red ? HIGH : LOW);
+}
+
+void paintLcd(const char* line0, const char* line1) {
+  char rows[2][17];
+  const char* lines[2] = {line0, line1};
+  for (int row = 0; row < 2; row++) {
+    memset(rows[row], ' ', 16);
+    rows[row][16] = 0;
+    for (int i = 0; i < 16 && lines[row][i]; i++) rows[row][i] = lines[row][i];
+    if (strcmp(rows[row], lcdCache[row]) == 0) continue;
+    memcpy(lcdCache[row], rows[row], 17);
+    lcd.setCursor(0, row);
+    lcd.print(rows[row]);
+  }
+}
+
+void showStatus() {
+  bool red = false;
+  bool yellow = false;
+  bool green = false;
+  if (!ready) {
+    setLeds(false, false, true);
+    paintLcd("PSRAM required", "Enable PSRAM");
+    return;
+  }
+  if (buzzing && alerts.phase != kPhaseBreak) red = true;
+  else if (alerts.phase == kPhaseBreak || !wifiUp || alerts.phase == kPhaseNoFace || alerts.postureScore < 0) yellow = true;
+  else if (alerts.postureScore <= kPostureBadAt) red = true;
+  else green = true;
+  setLeds(green, yellow, red);
+
+  if (alerts.phase == kPhaseBreak) {
+    uint32_t left = alerts.breakUntil > millis() ? (alerts.breakUntil - millis()) / 1000u : 0;
+    char line[20];
+    snprintf(line, sizeof(line), "Break %lus", static_cast<unsigned long>(left));
+    paintLcd(line, "Look away");
+    return;
+  }
+  if (!wifiUp) {
+    paintLcd("Wi-Fi down", PERCH_DEVICE_ID);
+    return;
+  }
+  if (alerts.phase == kPhaseNoFace) {
+    paintLcd("No face", "Step into frame");
+    return;
+  }
+  if (alerts.postureScore < 0) {
+    paintLcd("Waiting", PERCH_DEVICE_ID);
+    return;
+  }
+  char line0[20];
+  char line1[20];
+  uint32_t gapMs = millis() - alerts.lastBlinkAt;
+  snprintf(line0, sizeof(line0), "Posture %d", alerts.postureScore);
+  snprintf(line1, sizeof(line1), "Blink %lu.%lus", static_cast<unsigned long>(gapMs / 1000u),
+           static_cast<unsigned long>((gapMs / 100u) % 10u));
+  paintLcd(line0, line1);
+}
+
+void beginBreak(uint32_t now) {
+  if (alerts.phase == kPhaseBreak) return;
+  alerts.phase = kPhaseBreak;
+  alerts.breakUntil = now + kBreakDurationMs;
+  alerts.badPostureStreak = 0;
+  lastApplyMs = now;
+  startBuzz(kBuzzBreak);
+  Serial.println("note Look away from the screen for 20 seconds.");
+}
+
+void serviceButton() {
+  bool pressed = digitalRead(kButtonPin) == LOW;
+  uint32_t now = millis();
+  if (pressed != buttonReading) {
+    buttonReading = pressed;
+    buttonChangeAt = now;
+    return;
+  }
+  if (now - buttonChangeAt < kButtonDebounceMs) return;
+  if (pressed && !buttonStable) {
+    buttonStable = true;
+    beginBreak(now);
+  } else if (!pressed) {
+    buttonStable = false;
+  }
 }
 
 void applyBuzz(PerchStep step) {
@@ -564,24 +664,50 @@ void connectWifi() {
   lastWifiTryMs = millis();
 }
 
+void hardwareHello() {
+  lcd.begin(16, 2);
+  lcd.clear();
+  memset(lcdCache, 0, sizeof(lcdCache));
+  paintLcd("Perch", PERCH_DEVICE_ID);
+  const int pins[] = {kGreenPin, kYellowPin, kRedPin};
+  for (int pin : pins) {
+    digitalWrite(pin, HIGH);
+    delay(150);
+    digitalWrite(pin, LOW);
+  }
+  digitalWrite(kBuzzerPin, HIGH);
+  delay(80);
+  digitalWrite(kBuzzerPin, LOW);
+}
+
 void setup() {
   pinMode(kBuzzerPin, OUTPUT);
-  pinMode(kLedPin, OUTPUT);
+  pinMode(kGreenPin, OUTPUT);
+  pinMode(kYellowPin, OUTPUT);
+  pinMode(kRedPin, OUTPUT);
+  pinMode(kButtonPin, INPUT_PULLUP);
+  digitalWrite(kBuzzerPin, LOW);
+  setLeds(false, false, false);
+  hardwareHello();
   Serial.setRxBufferSize(16384);
   Serial.begin(921600);
   delay(200);
   if (!allocBoard()) {
     sayError("psram required");
+    showStatus();
     return;
   }
   ready = true;
   connectWifi();
   alerts = perch_initial(millis());
   hello();
+  showStatus();
 }
 
 void loop() {
   serviceBuzz();
+  serviceButton();
+  showStatus();
   if (!ready) return;
 
   while (Serial.available() > 0) feed((uint8_t)Serial.read());

@@ -50,9 +50,9 @@ The firmware lives at `esp32/perch_esp32/perch_esp32.ino`. On GitHub that is [el
 1. Install Arduino IDE 2 and, in Boards Manager, the **esp32** package by Espressif.
 2. **File → Open** and choose `esp32/perch_esp32/perch_esp32.ino`. The IDE loads `jpeg_gray` and `perch_alerts` from that same folder. Leave `esp32/tests/` alone. Those files are host checks, not part of the sketch.
 3. Copy `secrets.example.h` to `secrets.h` in that folder. Fill in Wi-Fi, a device id (letters, numbers, hyphens, or underscores), and the Perceptron key. `secrets.h` is gitignored. Do not commit it.
-4. ESP32-S3: board **ESP32S3 Dev Module**, **USB CDC On Boot: Enabled**, **PSRAM: Enabled** (or OPI PSRAM). ESP32-WROVER: board **ESP32 Wrover Module**, **PSRAM: Enabled**. The sketch uses 921600 baud either way. PSRAM is required.
-5. Passive piezo + to GPIO 4, piezo − to GND. An LED on GPIO 2 is optional.
-6. Upload. You can open Serial Monitor at 921600 and look for `device your-id`, then close the monitor. The website and the monitor cannot share the port.
+4. Board **ESP32S3 Dev Module**, **USB CDC On Boot: Enabled**, **PSRAM: Enabled** (or OPI PSRAM). PSRAM is required. Native USB ignores baud. The website opens the port at 921600.
+5. Wiring is fixed: active buzzer on GPIO 4 (HIGH beeps), green/yellow/red LEDs on GPIO 5/6/7, button on GPIO 15 to GND, LCD RS/E/D4–D7 on GPIO 8–13. Leave GPIO 3 and GPIO 46 empty.
+6. Upload. On reset the LEDs flash green, yellow, then red, and the buzzer chirps. Serial Monitor at 921600 shows `device your-id`. Close the monitor before the website connects. The two cannot share the port.
 7. In Chrome, open the device chart (or https://nohunch.club) and click **Not collecting footage**. Allow the camera and pick the USB port. The button changes to **Collecting footage**. The chart for that device id fills in after the board posts a score. The aggregate can lag about a minute.
 
 The board prints `ok` after each frame and holds that reply while it calls Perceptron, so the laptop does not overrun the serial buffer. A missing face is not saved. A forward head is `leaning_forward`. Posture 60 or below is `slouching`. Anything else visible is `good`.
