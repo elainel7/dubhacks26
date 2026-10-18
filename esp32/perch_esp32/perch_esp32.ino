@@ -85,7 +85,7 @@ static const char kPrompt[] =
     "Do not identify the person.";
 
 static const char kPrefix[] =
-    "{\"model\":\"perceptron-mk1.5\",\"max_completion_tokens\":300,"
+    "{\"model\":\"perceptron-mk1.5\",\"max_completion_tokens\":600,"
     "\"reasoning_effort\":\"none\",\"vision_config\":{\"enable_thinking\":false},"
     "\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"desk_state\",\"strict\":true,\"schema\":{"
     "\"type\":\"object\",\"additionalProperties\":false,\"properties\":{"
@@ -448,6 +448,7 @@ int postJson(const char* url, const uint8_t* data, size_t length, bool bearer, S
   http.setConnectTimeout(12000);
   http.setReuse(false);
   http.addHeader("Content-Type", "application/json");
+  http.addHeader("Accept-Encoding", "identity");
   if (bearer) {
     char auth[400];
     snprintf(auth, sizeof(auth), "Bearer %s", PERCH_PERCEPTRON_KEY);
@@ -455,6 +456,41 @@ int postJson(const char* url, const uint8_t* data, size_t length, bool bearer, S
   }
   int code = http.POST(const_cast<uint8_t*>(data), length);
   if (response) *response = http.getString();
+  http.end();
+  return code;
+}
+
+int postPerceptron(const uint8_t* data, size_t length, String* response) {
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(20);
+  client.setHandshakeTimeout(20000);
+  client.setBufferSizes(4096, 1024);
+  HTTPClient http;
+  if (!http.begin(client, "https://api.perceptron.inc/v1/chat/completions")) {
+    freeScratch();
+    return -1;
+  }
+  http.setTimeout(20000);
+  http.setConnectTimeout(12000);
+  http.setReuse(false);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Accept-Encoding", "identity");
+  char auth[400];
+  snprintf(auth, sizeof(auth), "Bearer %s", PERCH_PERCEPTRON_KEY);
+  http.addHeader("Authorization", auth);
+  int code = http.POST(const_cast<uint8_t*>(data), length);
+  freeScratch();
+  if (response && code > 0) {
+    *response = http.getString();
+    WiFiClient* stream = http.getStreamPtr();
+    uint32_t start = millis();
+    while (response->length() == 0 && stream && millis() - start < 3000) {
+      while (stream->available() && response->length() < 12000) response->concat((char)stream->read());
+      if (response->length() > 0 || !stream->connected()) break;
+      delay(20);
+    }
+  }
   http.end();
   return code;
 }
@@ -597,8 +633,7 @@ void scoreSheet() {
   ensureClock();
 
   String response;
-  int code = postJson("https://api.perceptron.inc/v1/chat/completions", body, used, true, &response, 12000);
-  freeScratch();
+  int code = postPerceptron(body, used, &response);
   if (code != 200) {
     char message[96];
     snprintf(message, sizeof(message), "not saved to Tiger Data. Perceptron connection failed (%d), free heap %u.", code,
@@ -624,11 +659,16 @@ void scoreSheet() {
   DeskScoreRead score;
   bool parsed = readDeskScore(reply, &score);
   if (!parsed) {
-    char excerpt[160];
-    deskScoreExcerpt(reply, excerpt, sizeof(excerpt));
-    Serial.print("not saved to Tiger Data. the score could not be read. ");
+    char excerpt[401];
+    const char* rawReply = response.c_str();
+    const char* atContent = strstr(rawReply, "\"content\"");
+    deskScoreExcerpt(atContent ? atContent : rawReply, excerpt, sizeof(excerpt));
+    if (!excerpt[0]) strncpy(excerpt, "(empty reply)", sizeof(excerpt));
+    Serial.print("note perceptron said: ");
     Serial.println(excerpt);
-    sayError("parse");
+    Serial.println("not saved to Tiger Data. the score could not be read.");
+    Serial.print("error parse ");
+    Serial.println(excerpt);
     free(reply);
     releaseHost();
     return;

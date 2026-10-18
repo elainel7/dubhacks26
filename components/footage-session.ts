@@ -110,6 +110,9 @@ function boardErrorText(text: string) {
   if (text === "parse") {
     return "Perceptron answered, but the score was not readable. Upload the latest sketch, then try again.";
   }
+  if (text.startsWith("parse ")) {
+    return "Perceptron answered, but the score was cut off or was not the score JSON. Reply: " + text.slice("parse ".length);
+  }
   return text;
 }
 
