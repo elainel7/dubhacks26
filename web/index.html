@@ -979,7 +979,7 @@
         return;
       }
       const labels = blinkTrace.map((sample) => formatBucket(new Date(sample.t).toISOString(), 1));
-      const values = blinkTrace.map((sample) => sample.gap);
+      const values = blinkTrace.map((sample) => sample.gap / 10);
       const peak = Math.max(10, ...values);
       setFrameMode(blinkFrame, "ready");
       blinkChart = lineChart(blinkCanvas, blinkChart, labels, values, "#9c341f", "Seconds since blink", Math.ceil(peak));
