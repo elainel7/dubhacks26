@@ -460,7 +460,36 @@ int postJson(const char* url, const uint8_t* data, size_t length, bool bearer, S
   return code;
 }
 
-int postPerceptron(const uint8_t* data, size_t length, String* response) {
+/* getString() reserves the whole Content-Length in internal RAM and returns
+   empty when that block is not free. The score is small; keep it in PSRAM. */
+struct ReplyWriter : public Stream {
+  uint8_t* data = nullptr;
+  size_t cap = 0;
+  size_t len = 0;
+
+  bool begin() {
+    cap = 20 * 1024;
+    if (psramFound()) data = (uint8_t*)heap_caps_malloc(cap, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!data) data = (uint8_t*)heap_caps_malloc(cap, MALLOC_CAP_8BIT);
+    if (!data) cap = 0;
+    return data != nullptr;
+  }
+
+  size_t write(uint8_t byte) override {
+    if (!data || len + 1 >= cap) return 1;
+    data[len++] = byte;
+    return 1;
+  }
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+  void flush() override {}
+};
+
+int postPerceptron(const uint8_t* data, size_t length, char** reply, size_t* replyLen, int* announced) {
+  if (reply) *reply = nullptr;
+  if (replyLen) *replyLen = 0;
+  if (announced) *announced = -1;
   WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(20);
@@ -475,20 +504,34 @@ int postPerceptron(const uint8_t* data, size_t length, String* response) {
   http.setConnectTimeout(12000);
   http.setReuse(false);
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("Accept-Encoding", "identity");
   char auth[400];
   snprintf(auth, sizeof(auth), "Bearer %s", PERCH_PERCEPTRON_KEY);
   http.addHeader("Authorization", auth);
   int code = http.POST(const_cast<uint8_t*>(data), length);
   freeScratch();
-  if (response && code > 0) {
-    *response = http.getString();
-    WiFiClient* stream = http.getStreamPtr();
-    uint32_t start = millis();
-    while (response->length() == 0 && stream && millis() - start < 3000) {
-      while (stream->available() && response->length() < 12000) response->concat((char)stream->read());
-      if (response->length() > 0 || !stream->connected()) break;
-      delay(20);
+  if (announced) *announced = http.getSize();
+  if (code > 0 && reply && replyLen) {
+    ReplyWriter sink;
+    if (sink.begin()) {
+      http.writeToStream(&sink);
+      if (sink.len == 0) {
+        WiFiClient* stream = http.getStreamPtr();
+        uint32_t start = millis();
+        while (stream && sink.len + 1 < sink.cap && millis() - start < 3000) {
+          if (stream->available()) {
+            int byte = stream->read();
+            if (byte < 0) break;
+            sink.data[sink.len++] = (uint8_t)byte;
+          } else if (!stream->connected()) {
+            break;
+          } else {
+            delay(10);
+          }
+        }
+      }
+      sink.data[sink.len] = 0;
+      *reply = (char*)sink.data;
+      *replyLen = sink.len;
     }
   }
   http.end();
@@ -632,9 +675,12 @@ void scoreSheet() {
   }
   ensureClock();
 
-  String response;
-  int code = postPerceptron(body, used, &response);
+  char* reply = nullptr;
+  size_t replyLen = 0;
+  int announced = -1;
+  int code = postPerceptron(body, used, &reply, &replyLen, &announced);
   if (code != 200) {
+    free(reply);
     char message[96];
     snprintf(message, sizeof(message), "not saved to Tiger Data. Perceptron connection failed (%d), free heap %u.", code,
              ESP.getFreeHeap());
@@ -647,27 +693,29 @@ void scoreSheet() {
     releaseHost();
     return;
   }
-
-  size_t replyLen = response.length();
-  char* reply = (char*)allocBuf(replyLen + 1);
   if (!reply) {
     sayError("ram");
     releaseHost();
     return;
   }
-  memcpy(reply, response.c_str(), replyLen + 1);
+
+  char excerpt[401];
+  const char* atContent = strstr(reply, "\"content\"");
+  deskScoreExcerpt(atContent ? atContent : reply, excerpt, sizeof(excerpt));
+  if (!excerpt[0]) strncpy(excerpt, "(empty reply)", sizeof(excerpt));
   DeskScoreRead score;
   bool parsed = readDeskScore(reply, &score);
   if (!parsed) {
-    char excerpt[401];
-    const char* rawReply = response.c_str();
-    const char* atContent = strstr(rawReply, "\"content\"");
-    deskScoreExcerpt(atContent ? atContent : rawReply, excerpt, sizeof(excerpt));
-    if (!excerpt[0]) strncpy(excerpt, "(empty reply)", sizeof(excerpt));
-    Serial.print("note perceptron said: ");
+    Serial.print("note perceptron said ");
+    Serial.print(replyLen);
+    Serial.print(" bytes, announced ");
+    Serial.print(announced);
+    Serial.print(": ");
     Serial.println(excerpt);
     Serial.println("not saved to Tiger Data. the score could not be read.");
     Serial.print("error parse ");
+    Serial.print(replyLen);
+    Serial.print(" bytes: ");
     Serial.println(excerpt);
     free(reply);
     releaseHost();
@@ -816,6 +864,7 @@ void setup() {
   ready = true;
   alerts = perch_initial(millis());
   hello();
+  Serial.println("note perch sketch ready");
   connectWifi();
   showStatus();
 }
