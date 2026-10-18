@@ -405,10 +405,28 @@
         </article>
       </div>
     </section>
+    <section class="points-card chart-panel" aria-label="Blinks">
+      <div class="points-head">
+        <h2>Blinks</h2>
+        <p>Sent by the ESP32 with each score. The board screen no longer shows this.</p>
+      </div>
+      <div class="points-grid">
+        <article>
+          <h3>Since last blink</h3>
+          <p id="blink-gap" class="points-stat">—</p>
+          <p class="points-meta">Over 5 seconds is the fast beep</p>
+        </article>
+        <article>
+          <h3>Blinks this minute</h3>
+          <p id="blink-rate" class="points-stat">—</p>
+          <p class="points-meta">From the latest sheet</p>
+        </article>
+      </div>
+    </section>
     <section class="chart-panel" aria-labelledby="chart-title">
       <div class="chart-heading">
         <h2 id="chart-title">Posture</h2>
-        <p>Score from 1 to 100 for the last 10 minutes. The page checks Tiger Data every second. 60 is poor posture.</p>
+        <p>Score from 1 to 100 for the last 10 minutes. The page checks Tiger Data every second. A new point is saved after four frames, about twice as often as before. 60 is poor posture.</p>
       </div>
       <div class="chart-frame" id="chart-frame">
         <canvas id="chart" aria-label="Posture score from 1 to 100"></canvas>
@@ -847,6 +865,14 @@
         if (detail === "bad frame" || detail === "partial") countSheetOk = false;
         setFootage(footageCollecting, boardError(detail));
       }
+      else if (text.startsWith("score ")) {
+        const gap = text.match(/(?:^|\s)gap=([^\s]+)/);
+        const rate = text.match(/(?:^|\s)rate=([^\s]+)/);
+        const gapEl = document.querySelector("#blink-gap");
+        const rateEl = document.querySelector("#blink-rate");
+        if (gapEl) gapEl.textContent = gap ? gap[1] + " s" : "—";
+        if (rateEl) rateEl.textContent = rate ? rate[1] : "—";
+      }
       else if (text.startsWith("note ")) showBoard(text.slice(5).trim());
       else if (
         text &&
@@ -1027,7 +1053,7 @@
           await pending;
           if (countSheetOk) sheetCount += 1;
           else countSheetOk = true;
-          if (sheetCount >= 8) {
+          if (sheetCount >= 4) {
             sheetCount = 0;
             const scoringStarted = performance.now();
             while (!idleLatched) {

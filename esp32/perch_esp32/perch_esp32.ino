@@ -1,7 +1,7 @@
 // Perch on an ESP32.
 //
 // The laptop is only a camera. Chrome sends 96x72 grayscale frames over USB.
-// This board stores eight of them, builds one contact sheet, asks Perceptron
+// This board stores four of them, builds one contact sheet, asks Perceptron
 // Mk1.5, buzzes, and posts the posture number to Tiger Data for PERCH_DEVICE_ID.
 //
 // Open this file in Arduino IDE 2: esp32/perch_esp32/perch_esp32.ino
@@ -44,7 +44,7 @@
 constexpr int kFrameW = 96;
 constexpr int kFrameH = 72;
 constexpr int kPixels = kFrameW * kFrameH;
-constexpr int kPanels = 8;
+constexpr int kPanels = 4;
 constexpr int kSheetW = 584;
 constexpr int kSheetH = 144;
 constexpr int kPostureX = 392;
@@ -64,7 +64,7 @@ constexpr uint8_t kMagic1 = 0x5A;
 
 static const char kPrompt[] =
     "This grayscale image is one contact sheet of a person at a laptop. "
-    "Eight small panels run left to right, then top to bottom, and cover about half a second. "
+    "Four small panels sit in one row on the left and cover about a quarter of a second. "
     "blink_count is how many times the eyelids close in the small panels. "
     "If the pupils disappear behind the lids in any small panel, blink_count is at least 1. "
     "A closure at the end of the sheet still counts. Do not return 0 because the eyes have not opened again yet. "
@@ -181,14 +181,16 @@ void addBuzz(bool on, int ms) {
 void startBuzz(PerchBuzz buzz) {
   buzzLen = 0;
   if (buzz == kBuzzBlink) {
-    addBuzz(true, 80);
-    addBuzz(false, 70);
-    addBuzz(true, 80);
-  } else if (buzz == kBuzzPosture) {
-    for (int i = 0; i < 3; i++) {
-      addBuzz(true, 120);
-      if (i < 2) addBuzz(false, 80);
+    for (int i = 0; i < 8; i++) {
+      addBuzz(true, 40);
+      addBuzz(false, 40);
     }
+  } else if (buzz == kBuzzPosture) {
+    addBuzz(true, 340);
+    addBuzz(false, 160);
+    addBuzz(true, 340);
+    addBuzz(false, 160);
+    addBuzz(true, 340);
   } else if (buzz == kBuzzBreak) {
     for (int i = 0; i < 10; i++) {
       addBuzz(true, 180);
@@ -200,6 +202,14 @@ void startBuzz(PerchBuzz buzz) {
   buzzIndex = 0;
   buzzUntil = 0;
   buzzing = true;
+}
+
+void playBuzzNow(PerchBuzz buzz) {
+  startBuzz(buzz);
+  while (buzzing) {
+    serviceBuzz();
+    delay(5);
+  }
 }
 
 void silenceBuzz() {
@@ -284,12 +294,8 @@ void showStatus() {
     return;
   }
   char line0[20];
-  char line1[20];
-  uint32_t gapMs = millis() - alerts.lastBlinkAt;
   snprintf(line0, sizeof(line0), "Posture %d", alerts.postureScore);
-  snprintf(line1, sizeof(line1), "Blink %lu.%lus", static_cast<unsigned long>(gapMs / 1000u),
-           static_cast<unsigned long>((gapMs / 100u) % 10u));
-  paintLcd(line0, line1);
+  paintLcd(line0, alerts.postureScore <= kPostureBadAt ? "Sit up" : "Upright");
 }
 
 void beginBreak(uint32_t now) {
@@ -739,8 +745,8 @@ void scoreSheet() {
   alerts = step.state;
   lastApplyMs = millis();
   printScore(face, blinks, posture, head, shoulders);
-  if (step.buzz != kBuzzNone) startBuzz(step.buzz);
   postEvent(face, posture, head);
+  if (step.buzz != kBuzzNone) playBuzzNow(step.buzz);
   sayNote(step.note);
   releaseHost();
 }

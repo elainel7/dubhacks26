@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { FootageToggle } from "@/components/footage-toggle";
+import { getFootageServerSnapshot, getFootageSnapshot, subscribeFootage } from "@/components/footage-session";
 import { rememberDevice } from "@/components/site-nav";
 
 type LiveEvent = {
@@ -155,6 +156,7 @@ function PostureScoreChart({ events }: { events: LiveEvent[] }) {
 export function DeviceChart({ deviceId }: { deviceId: string }) {
   const [events, setEvents] = useState<LiveEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const blink = useSyncExternalStore(subscribeFootage, getFootageSnapshot, getFootageServerSnapshot).liveScore;
 
   useEffect(() => {
     rememberDevice(deviceId);
@@ -205,7 +207,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
           <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Device id</p>
           <h1 className="mt-1 text-4xl break-all text-foreground sm:text-5xl">{deviceId}</h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            The last 10 minutes of scores. The chart asks Tiger Data for new rows every second.
+            The last 10 minutes of scores. The chart asks Tiger Data every second. A new point is saved after four frames, about twice as often as an eight-frame sheet.
           </p>
         </div>
         <FootageToggle />
@@ -246,6 +248,23 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
               <p className="mt-2 font-heading text-3xl leading-tight text-foreground">
                 {summary.problem ? formatPostureLabel(summary.problem) : "None"}
               </p>
+            </article>
+          </section>
+
+          <section aria-label="Blinks" className="grid gap-3 sm:grid-cols-2">
+            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
+              <h2 className="text-sm font-semibold text-muted-foreground">Since last blink</h2>
+              <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
+                {blink && Number.isFinite(blink.gap) ? `${blink.gap} s` : "—"}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">Over 5 seconds is the fast beep. The board screen does not show this.</p>
+            </article>
+            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
+              <h2 className="text-sm font-semibold text-muted-foreground">Blinks this minute</h2>
+              <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
+                {blink && Number.isFinite(blink.rate) ? blink.rate : "—"}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">From the latest sheet.</p>
             </article>
           </section>
 

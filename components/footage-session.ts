@@ -9,6 +9,8 @@ export type LiveScore = {
   face: boolean;
   posture: number;
   head: string;
+  gap: number;
+  rate: number;
   saved: boolean;
   seq: number;
 };
@@ -187,6 +189,8 @@ export async function startFootage() {
             face: line.face,
             posture: line.posture,
             head: line.head,
+            gap: line.gap,
+            rate: line.rate,
             saved: false,
             seq: (state.liveScore?.seq ?? 0) + 1,
           },

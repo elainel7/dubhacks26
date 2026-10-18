@@ -260,7 +260,7 @@ export async function connectEsp32(
       }
       if (countSheetOk) sheet += 1;
       else countSheetOk = true;
-      if (sheet < 8) return;
+      if (sheet < 4) return;
       sheet = 0;
       const scoringStarted = Date.now();
       while (!idleLatched) {
