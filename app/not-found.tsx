@@ -8,7 +8,7 @@ export default function NotFound() {
       id="content"
       className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-6 md:px-6 md:py-10"
     >
-      <SiteNav current="device" />
+      <SiteNav />
       <section className="max-w-xl rounded-2xl bg-card px-6 py-8 ring-1 ring-foreground/10">
         <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Perch</p>
         <h1 className="mt-2 text-4xl text-foreground">That device id is not valid</h1>

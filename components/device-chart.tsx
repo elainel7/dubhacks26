@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { FootageToggle } from "@/components/footage-toggle";
+import { getFootageServerSnapshot, getFootageSnapshot, subscribeFootage } from "@/components/footage-session";
 import { rememberDevice } from "@/components/site-nav";
 import { Button } from "@/components/ui/button";
 
@@ -189,6 +191,14 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
   const [payload, setPayload] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
+  const footage = useSyncExternalStore(subscribeFootage, getFootageSnapshot, getFootageServerSnapshot);
+
+  useEffect(() => {
+    if (!footage.collecting) return;
+    const timer = window.setInterval(() => setReload((value) => value + 1), 20_000);
+    return () => window.clearInterval(timer);
+  }, [footage.collecting]);
 
   useEffect(() => {
     rememberDevice(deviceId);
@@ -217,7 +227,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
       ignore = true;
       controller.abort();
     };
-  }, [deviceId, hours]);
+  }, [deviceId, hours, reload]);
 
   const summary = payload?.summary;
   const points = payload?.timeline?.points ?? [];
@@ -237,9 +247,10 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
           <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Device id</p>
           <h1 className="mt-1 text-4xl break-all text-foreground sm:text-5xl">{deviceId}</h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            Percent upright, good and bad posture, and the most common problem. The camera stays on its
-            own page.
+            Percent upright, good and bad posture, and the most common problem. Footage stays off this
+            screen.
           </p>
+          <FootageToggle />
         </div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Time window">
           {WINDOWS.map((window) => (
@@ -315,7 +326,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
                 <p className="font-heading text-2xl text-foreground">No readings yet</p>
                 <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
                   No posture for device id {deviceId} in the last {hours} {hours === 1 ? "hour" : "hours"}.
-                  Scores show up here after the camera sees a face.
+                  Scores show up here after footage collection sees a face.
                 </p>
               </div>
             ) : (

@@ -22,7 +22,7 @@ export default function HomePage() {
       id="content"
       className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-4 py-6 md:px-6 md:py-10"
     >
-      <SiteNav current="device" />
+      <SiteNav />
       <section className="grid items-center gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)] lg:gap-14">
         <div className="flex flex-col gap-3">
           <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Perch</p>

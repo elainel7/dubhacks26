@@ -1,0 +1,171 @@
+"use client";
+
+import { rememberDevice } from "@/components/site-nav";
+import { normalizeDeviceId } from "@/lib/device-id";
+import { serialAvailable } from "@/lib/serial";
+import { connectEsp32, FRAME_H, FRAME_W, type EspLink } from "@/vision/esp32-link";
+
+export type FootageState = {
+  collecting: boolean;
+  starting: boolean;
+  error: string | null;
+  deviceId: string | null;
+};
+
+const serverSnapshot: FootageState = {
+  collecting: false,
+  starting: false,
+  error: null,
+  deviceId: null,
+};
+
+let state: FootageState = serverSnapshot;
+const listeners = new Set<() => void>();
+let link: EspLink | null = null;
+let stream: MediaStream | null = null;
+let stopRequested = false;
+
+function emit(next: FootageState) {
+  state = next;
+  listeners.forEach((listener) => listener());
+}
+
+export function subscribeFootage(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function getFootageSnapshot() {
+  return state;
+}
+
+export function getFootageServerSnapshot() {
+  return serverSnapshot;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function hiddenElements() {
+  const existingVideo = document.getElementById("perch-footage");
+  const video = existingVideo instanceof HTMLVideoElement ? existingVideo : document.createElement("video");
+  if (video.parentElement === null) {
+    video.id = "perch-footage";
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute("aria-hidden", "true");
+    video.tabIndex = -1;
+    video.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none";
+    document.body.appendChild(video);
+  }
+  const existingCanvas = document.getElementById("perch-footage-canvas");
+  const canvas = existingCanvas instanceof HTMLCanvasElement ? existingCanvas : document.createElement("canvas");
+  if (canvas.parentElement === null) {
+    canvas.id = "perch-footage-canvas";
+    canvas.width = FRAME_W;
+    canvas.height = FRAME_H;
+    canvas.hidden = true;
+    document.body.appendChild(canvas);
+  }
+  return { video, canvas };
+}
+
+function grab(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
+  if (video.readyState < 2) return null;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+  context.drawImage(video, 0, 0, FRAME_W, FRAME_H);
+  const pixels = context.getImageData(0, 0, FRAME_W, FRAME_H).data;
+  const gray = new Uint8Array(FRAME_W * FRAME_H);
+  for (let i = 0, p = 0; i < pixels.length; i += 4, p++) {
+    const value = 0.3 * pixels[i] + 0.6 * pixels[i + 1] + 0.1 * pixels[i + 2];
+    gray[p] = value < 0 ? 0 : value > 255 ? 255 : Math.round(value);
+  }
+  return gray;
+}
+
+async function requestPort() {
+  const serial = navigator.serial as Navigator["serial"] & {
+    getPorts?: () => Promise<Array<Awaited<ReturnType<Navigator["serial"]["requestPort"]>>>>;
+  };
+  if (serial.getPorts) {
+    const ports = await serial.getPorts();
+    if (ports.length === 1) return ports[0];
+  }
+  return navigator.serial.requestPort();
+}
+
+async function pump() {
+  const { video, canvas } = hiddenElements();
+  while (!stopRequested && link) {
+    const gray = grab(video, canvas);
+    if (!gray) {
+      await sleep(40);
+      continue;
+    }
+    const started = performance.now();
+    try {
+      await link.sendFrame(Date.now(), gray);
+    } catch {
+      if (stopRequested) return;
+      emit({ ...state, collecting: false, error: "The ESP32 stopped answering. Turn footage on again." });
+      await stopFootage();
+      return;
+    }
+    const rest = 70 - (performance.now() - started);
+    if (rest > 0) await sleep(rest);
+  }
+}
+
+export async function startFootage() {
+  if (state.collecting || state.starting) return;
+  emit({ ...state, starting: true, error: null });
+  if (!serialAvailable()) {
+    emit({ ...state, starting: false, error: "Chrome or Edge is required." });
+    return;
+  }
+  stopRequested = false;
+  try {
+    const media = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+    });
+    stream = media;
+    const { video } = hiddenElements();
+    video.srcObject = media;
+    await video.play();
+    link = await connectEsp32(requestPort, (line) => {
+      if (line.kind === "device") {
+        const id = normalizeDeviceId(line.id);
+        if (!id) return;
+        rememberDevice(id);
+        emit({ ...state, deviceId: id });
+      } else if (line.kind === "error") {
+        emit({ ...state, error: line.text });
+      }
+    });
+    emit({ ...state, collecting: true, starting: false, error: null });
+    void pump();
+  } catch (cause) {
+    await stopFootage();
+    const message = cause instanceof Error ? cause.message : "Could not start footage.";
+    const cancelled =
+      (cause instanceof DOMException && cause.name === "NotFoundError") ||
+      message.toLowerCase().includes("cancel") ||
+      message.includes("No port selected");
+    emit({ ...state, collecting: false, starting: false, error: cancelled ? null : message });
+  }
+}
+
+export async function stopFootage() {
+  stopRequested = true;
+  stream?.getTracks().forEach((track) => track.stop());
+  stream = null;
+  const current = link;
+  link = null;
+  const video = document.getElementById("perch-footage");
+  if (video instanceof HTMLVideoElement) video.srcObject = null;
+  await current?.close();
+  emit({ ...state, collecting: false, starting: false });
+}

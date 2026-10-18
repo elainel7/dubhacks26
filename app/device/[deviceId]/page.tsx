@@ -46,7 +46,7 @@ export default function DevicePage({ params }: DevicePageProps) {
       id="content"
       className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-6 md:px-6 md:py-10"
     >
-      <SiteNav current="device" />
+      <SiteNav />
       <Suspense fallback={<DeviceLoading />}>
         <DeviceBody params={params} />
       </Suspense>

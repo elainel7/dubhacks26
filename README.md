@@ -4,7 +4,7 @@ No more hunching. Perch is a desk companion: the camera scores posture, and the 
 
 Two parts live in this repo.
 
-- **Perch** (Next.js) opens on a device id. `/device/[deviceId]` shows only that device's posture: percent upright, good and bad posture, and the most common problem. **Camera** in the nav is a separate preview at `/camera`.
+- **Perch** (Next.js) opens on a device id. `/device/[deviceId]` shows only that device's posture: percent upright, good and bad posture, and the most common problem. The same screen turns footage collection on and off. There is no camera preview.
 - **Posture API** stores numeric posture rows in Tiger Data. The static dashboard is `index.html` at the repo root, branded Perch, and published to nohunch.club. Instructions follow the Perch section.
 
 ## Layout
@@ -14,7 +14,7 @@ backend/     FastAPI app (api/), SQL (db/), seed script (scripts/), Python tests
 web/         static Perch dashboard (index.html)
 shared/      empty placeholder for code used by more than one app
 index.html   copy of web/index.html
-app/         Next.js pages: /, /device/[deviceId], /camera
+app/         Next.js pages: /, /device/[deviceId]
 components/  Perch UI (kebab-case files, PascalCase components)
 esp32/       ESP32 firmware. The board builds contact sheets, calls Perceptron, buzzes, and writes Tiger Data
 lib/         device id and serial helpers
@@ -38,7 +38,7 @@ npm run dev
 Open [http://localhost:43123](http://localhost:43123) in Chrome or Edge. Pull the latest `main` first if you already have a checkout.
 
 1. The first page asks for a device id and opens the chart for that id. Use the id compiled into the ESP32.
-2. **Camera** asks for the webcam, then **Connect ESP32**. Pick the board's USB serial port. The page sends 96×72 grayscale frames and shows the numbers the board sends back.
+2. Open a device id. **Not collecting footage** turns the webcam on and connects the ESP32. The button then reads **Collecting footage**. The page does not show the camera. Pick the board's USB serial port the first time. Chrome or Edge is required. The same button is on https://nohunch.club.
 3. A 5-second stare buzzes on the board. Under 20 blinks in a minute buzzes again. Three posture scores of 60 or below buzz a different pattern. A 20-minute stretch starts a 20-second break buzz.
 
 `npm test` checks the blink clock, the USB frame packet, and the posture event mapping.
@@ -53,7 +53,7 @@ The firmware lives at `esp32/perch_esp32/perch_esp32.ino`. On GitHub that is [el
 4. ESP32-S3: board **ESP32S3 Dev Module**, **USB CDC On Boot: Enabled**, **PSRAM: Enabled** (or OPI PSRAM). ESP32-WROVER: board **ESP32 Wrover Module**, **PSRAM: Enabled**. The sketch uses 921600 baud either way. PSRAM is required.
 5. Passive piezo + to GPIO 4, piezo − to GND. An LED on GPIO 2 is optional.
 6. Upload. You can open Serial Monitor at 921600 and look for `device your-id`, then close the monitor. The website and the monitor cannot share the port.
-7. In Chrome, open **Camera**, allow the camera, click **Connect ESP32**, and pick the port. The chart for that device id fills in after the board posts a score. The aggregate on the chart can lag about a minute.
+7. In Chrome, open the device chart (or https://nohunch.club) and click **Not collecting footage**. Allow the camera and pick the USB port. The button changes to **Collecting footage**. The chart for that device id fills in after the board posts a score. The aggregate can lag about a minute.
 
 The board prints `ok` after each frame and holds that reply while it calls Perceptron, so the laptop does not overrun the serial buffer. A missing face is not saved. A forward head is `leaning_forward`. Posture 60 or below is `slouching`. Anything else visible is `good`.
 
@@ -274,7 +274,7 @@ Web Audio when serial is not connected: oscillator, same rhythm, so unplugging t
 
 ## Arduino
 
-The live buzzer is the ESP32 sketch in `esp32/perch_esp32/`. The Uno file `arduino/perch_buzzer/perch_buzzer.ino` is the older letter-only buzzer (pin 8, 9600 baud) and is not what the camera page drives anymore.
+The live buzzer is the ESP32 sketch in `esp32/perch_esp32/`. The Uno file `arduino/perch_buzzer/perch_buzzer.ino` is the older letter-only buzzer (pin 8, 9600 baud). The chart button does not use it.
 
 Passive piezo on pin 8, LED and a 220Ω resistor on pin 7, USB serial at 9600. `delay()` blocking the 20-second pattern is fine. The page sends `R` once and does not send `B` or `P` during the break.
 

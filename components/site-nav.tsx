@@ -1,59 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useSyncExternalStore, type ReactNode } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { DEVICE_STORAGE_KEY } from "@/lib/device-id";
-import { cn } from "@/lib/utils";
-
-function subscribe(onStoreChange: () => void) {
-  window.addEventListener("perch-device", onStoreChange);
-  return () => window.removeEventListener("perch-device", onStoreChange);
-}
-
-function snapshot() {
-  return sessionStorage.getItem(DEVICE_STORAGE_KEY);
-}
-
-function serverSnapshot() {
-  return null;
-}
 
 export function rememberDevice(deviceId: string) {
   sessionStorage.setItem(DEVICE_STORAGE_KEY, deviceId);
   window.dispatchEvent(new Event("perch-device"));
 }
 
-function NavLink({
-  href,
-  current,
-  children,
-}: {
-  href: string;
-  current: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-current={current ? "page" : undefined}
-      className={cn(
-        "rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-        current
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:bg-card hover:text-foreground",
-      )}
-    >
-      {children}
-    </Link>
-  );
-}
-
-export function SiteNav({ current }: { current: "device" | "camera" }) {
-  const deviceId = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
-  const deviceHref = deviceId ? `/device/${encodeURIComponent(deviceId)}` : "/";
-  const onCamera = current === "camera";
-
+export function SiteNav() {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4">
       <Link
@@ -63,14 +19,6 @@ export function SiteNav({ current }: { current: "device" | "camera" }) {
         <BrandMark />
         <span className="font-heading text-2xl leading-none text-foreground">Perch</span>
       </Link>
-      <nav aria-label="Primary" className="flex items-center gap-1 rounded-full bg-secondary/80 p-1">
-        <NavLink href={deviceHref} current={!onCamera}>
-          Device
-        </NavLink>
-        <NavLink href="/camera" current={onCamera}>
-          Camera
-        </NavLink>
-      </nav>
     </header>
   );
 }
