@@ -129,9 +129,10 @@ async function pump() {
     const started = performance.now();
     try {
       await link.sendFrame(Date.now(), gray);
-    } catch {
+    } catch (cause) {
       if (stopRequested) return;
-      emit({ ...state, collecting: false, error: "The ESP32 stopped answering. Turn footage on again." });
+      const message = cause instanceof Error ? cause.message : "The ESP32 did not answer.";
+      emit({ ...state, collecting: false, error: message });
       await stopFootage();
       return;
     }

@@ -127,6 +127,7 @@ static uint8_t header[6];
 static size_t rxGot = 0;
 static uint16_t rxCrc = 0xFFFF;
 static uint8_t crcBytes[2];
+static uint32_t rxMarkMs = 0;
 
 uint16_t crc16_add(uint16_t crc, uint8_t byte) {
   crc ^= (uint16_t)byte << 8;
@@ -155,9 +156,8 @@ void sayError(const char* text) {
 }
 
 void releaseHost() {
-  Serial.println("idle");
-  Serial.println("ok");
   frameCount = 0;
+  Serial.println("idle");
 }
 
 void hello() {
@@ -455,6 +455,7 @@ int postJson(const char* url, const uint8_t* data, size_t length, bool bearer, S
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
+  client.setTimeout(12);
   if (!http.begin(client, url)) return -1;
   http.setTimeout(timeoutMs);
   http.setConnectTimeout(8000);
@@ -650,14 +651,13 @@ void acceptFrame() {
   memcpy(frames[frameCount], payload + 4, kPixels);
   stamps[frameCount] = stamp;
   frameCount++;
-  if (frameCount < kPanels) {
-    Serial.println("ok");
-    return;
-  }
+  Serial.println("ok");
+  if (frameCount < kPanels) return;
   scoreSheet();
 }
 
 void feed(uint8_t byte) {
+  rxMarkMs = millis();
   if (rxState == kWait0) {
     if (byte == kMagic0) rxState = kWait1;
     return;
@@ -743,6 +743,7 @@ void setup() {
   hardwareHello();
   Serial.setRxBufferSize(16384);
   Serial.begin(921600);
+  Serial.setTxTimeoutMs(100);
   delay(200);
   if (!allocBoard()) {
     sayError("ram");
@@ -771,6 +772,12 @@ void loop() {
   while (Serial.available() > 0) feed((uint8_t)Serial.read());
 
   uint32_t now = millis();
+  if (rxState != kWait0 && now - rxMarkMs > 3000) {
+    rxState = kWait0;
+    rxGot = 0;
+    Serial.println("error partial");
+    Serial.println("ok");
+  }
   if (WiFi.status() == WL_CONNECTED) {
     if (!wifiUp) {
       wifiUp = true;

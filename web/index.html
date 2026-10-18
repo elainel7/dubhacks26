@@ -748,6 +748,9 @@
     let boardReady = false;
     let lastPacket = null;
     let resentWhileWaiting = false;
+    let lastLine = "";
+    let idleLatched = false;
+    let sheetCount = 0;
 
     function crc16(bytes) {
       let crc = 0xffff;
@@ -814,6 +817,8 @@
 
     function handleBoardLine(line) {
       const text = line.trim();
+      if (text) lastLine = text;
+      if (text === "idle") idleLatched = true;
       if (text === "ready" || text === "idle" || text === "ok" || text.startsWith("device ")) boardReady = true;
       if (text === "ready" && okWaiter && lastPacket && footageWriter && !resentWhileWaiting) {
         resentWhileWaiting = true;
@@ -878,7 +883,8 @@
         const timer = window.setTimeout(() => {
           okWaiter = null;
           failWaiter = null;
-          reject(new Error("The ESP32 did not answer."));
+          const why = lastLine ? " Last line: " + lastLine + "." : " The board sent no line back.";
+          reject(new Error("The ESP32 did not answer." + why));
         }, 40000);
         resentWhileWaiting = false;
         okWaiter = () => {
@@ -943,6 +949,9 @@
         footagePort = await portPromise;
         footageChosen = footagePort;
         await footagePort.open({ baudRate: 921600 });
+        try {
+          await footagePort.setSignals({ dataTerminalReady: false, requestToSend: false });
+        } catch (err) {}
         footageWriter = footagePort.writable.getWriter();
         footageReader = footagePort.readable.getReader();
         readBoard();
@@ -953,7 +962,9 @@
         const bootStart = performance.now();
         while (!boardReady) {
           if (footageStop) return;
-          if (performance.now() - bootStart > 20000) throw new Error("The ESP32 did not answer.");
+          if (performance.now() - bootStart > 20000) {
+            throw new Error("The ESP32 sent nothing. Close the Arduino Serial Monitor, then choose the port that shows up when the board is plugged in.");
+          }
           await new Promise((resolve) => window.setTimeout(resolve, 50));
         }
         while (!footageStop) {
@@ -962,12 +973,28 @@
             await new Promise((resolve) => window.setTimeout(resolve, 40));
             continue;
           }
+          idleLatched = false;
           const started = performance.now();
           const packet = encodeFrame(Date.now(), gray);
           lastPacket = packet;
           const pending = waitForOk();
-          await footageWriter.write(packet);
+          for (let offset = 0; offset < packet.length; offset += 512) {
+            await footageWriter.write(packet.subarray(offset, Math.min(packet.length, offset + 512)));
+          }
           await pending;
+          sheetCount += 1;
+          if (sheetCount >= 8) {
+            sheetCount = 0;
+            const scoringStarted = performance.now();
+            while (!idleLatched) {
+              if (footageStop) return;
+              if (performance.now() - scoringStarted > 45000) {
+                throw new Error("The ESP32 did not answer. It started a score and never finished. Last line: " + (lastLine || "none") + ".");
+              }
+              await new Promise((resolve) => window.setTimeout(resolve, 30));
+            }
+            idleLatched = false;
+          }
           const rest = 70 - (performance.now() - started);
           if (rest > 0) await new Promise((resolve) => window.setTimeout(resolve, rest));
         }

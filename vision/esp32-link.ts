@@ -30,6 +30,7 @@ export type EspLine =
 
 type Port = {
   open(options: { baudRate: number }): Promise<void>;
+  setSignals?(signals: { dataTerminalReady?: boolean; requestToSend?: boolean }): Promise<void>;
   readable: ReadableStream<Uint8Array> | null;
   writable: WritableStream<Uint8Array> | null;
   close(): Promise<void>;
@@ -125,6 +126,8 @@ export async function connectEsp32(
 ): Promise<EspLink> {
   const port = await requestPort();
   await port.open({ baudRate: 921600 });
+  // Opening the port raises DTR and holds an ESP32-S3 in the bootloader, so the sketch never prints.
+  await port.setSignals?.({ dataTerminalReady: false, requestToSend: false });
   if (!port.writable || !port.readable) {
     throw new Error("The serial port did not open a data stream.");
   }
@@ -139,6 +142,8 @@ export async function connectEsp32(
   let lastPacket: Uint8Array | null = null;
   let waitingForOk = false;
   let resentWhileWaiting = false;
+  let idleLatched = false;
+  let sheet = 0;
   const waiters: Waiter[] = [];
   const inbox: EspLine[] = [];
 
@@ -161,6 +166,7 @@ export async function connectEsp32(
   function pushLine(line: EspLine) {
     onLine(line);
     if (line.kind === "ready" || line.kind === "device" || line.kind === "idle" || line.kind === "ok") markHeard();
+    if (line.kind === "idle") idleLatched = true;
     if (line.kind === "ready" && waitingForOk && lastPacket && !resentWhileWaiting) {
       resentWhileWaiting = true;
       void writer.write(lastPacket).catch(() => {
@@ -220,7 +226,7 @@ export async function connectEsp32(
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         heardResolve = null;
-        reject(new Error("The ESP32 did not answer."));
+        reject(new Error("The ESP32 sent nothing. Close the Arduino Serial Monitor, then choose the port that shows up when the board is plugged in."));
       }, 20_000);
       heardResolve = () => {
         clearTimeout(timer);
@@ -232,13 +238,16 @@ export async function connectEsp32(
   return {
     async sendFrame(timestampMs, gray) {
       await waitUntilHeard();
+      idleLatched = false;
       const packet = encodeFrame(timestampMs, gray);
       lastPacket = packet;
       resentWhileWaiting = false;
       waitingForOk = true;
       const pending = waitFor("ok", 40_000);
       try {
-        await writer.write(packet);
+        for (let offset = 0; offset < packet.length; offset += 512) {
+          await writer.write(packet.subarray(offset, Math.min(packet.length, offset + 512)));
+        }
       } catch (cause) {
         waitingForOk = false;
         failWaiters(cause instanceof Error ? cause : new Error("Could not write to the ESP32."));
@@ -249,6 +258,17 @@ export async function connectEsp32(
       } finally {
         waitingForOk = false;
       }
+      sheet += 1;
+      if (sheet < 8) return;
+      sheet = 0;
+      const scoringStarted = Date.now();
+      while (!idleLatched) {
+        if (Date.now() - scoringStarted > 45_000) {
+          throw new Error("The ESP32 did not answer. It started a score and never finished.");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+      idleLatched = false;
     },
     async close() {
       stopped = true;
