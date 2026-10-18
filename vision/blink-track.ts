@@ -143,37 +143,16 @@ export function shownGap(watch: BlinkWatch, saved: number | null | undefined, no
   return Number(saved);
 }
 
-/**
- * The board clock starts at power-on, so the first saved gaps can be a
- * couple of minutes before the first real blink. That opening run is drawn
- * as 0. A stare that shows up after the clock has already dropped stays.
- */
-export function blinkChartGaps(gaps: Array<number | null>) {
-  const out = gaps.slice();
-  const finite: number[] = [];
-  for (let i = 0; i < out.length; i += 1) {
-    const gap = out[i];
-    if (gap != null && Number.isFinite(gap)) finite.push(i);
-  }
-  if (finite.length === 0) return gaps;
-  const first = out[finite[0]] as number;
-  if (finite.length === 1) {
-    if (first > 30) out[finite[0]] = 0;
-    return out;
-  }
-  if (first <= 30) return out;
+export type BlinkSample = { time: number; gap: number };
 
-  let run = 1;
-  let floor = first;
-  for (let k = 1; k < finite.length; k += 1) {
-    const gap = out[finite[k]] as number;
-    if (gap + 5 < floor) break;
-    if (gap < floor) floor = gap;
-    run += 1;
-  }
-  if (run >= finite.length) return out;
-  for (let k = 0; k < run; k += 1) out[finite[k]] = 0;
-  return out;
+/** Laptop blink line. It starts at 0 and does not wait for a board score. */
+export function appendBlinkSample(samples: BlinkSample[], time: number, gap: number) {
+  const cutoff = time - 10 * 60 * 1000;
+  const recent = samples.length && samples[0].time < cutoff ? samples.filter((sample) => sample.time >= cutoff) : samples;
+  const last = recent[recent.length - 1];
+  if (last && time - last.time < 200 && last.gap === gap) return recent;
+  const next = recent.concat({ time, gap });
+  return next.length > 2400 ? next.slice(-2400) : next;
 }
 
 /** One chart point. A later blink cannot rewrite an earlier score. */

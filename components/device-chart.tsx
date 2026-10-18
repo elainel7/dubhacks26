@@ -5,7 +5,6 @@ import { FootageToggle } from "@/components/footage-toggle";
 import { getFootageServerSnapshot, getFootageSnapshot, subscribeFootage } from "@/components/footage-session";
 import { Leaderboard } from "@/components/leaderboard-list";
 import { PointsPanel } from "@/components/points-panel";
-import { blinkChartGaps, shownGapAt } from "@/vision/blink-track";
 import { rememberDevice } from "@/components/site-nav";
 
 type LiveEvent = {
@@ -179,7 +178,6 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
   const [events, setEvents] = useState<LiveEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const footage = useSyncExternalStore(subscribeFootage, getFootageSnapshot, getFootageServerSnapshot);
-  const blink = footage.liveScore;
   const blinkLive = footage.blink;
 
   useEffect(() => {
@@ -216,21 +214,11 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
   }, [deviceId]);
 
   const summary = events ? summarize(events) : null;
-  const savedBlink = [...(events ?? [])].reverse().find((event) => event.blink_gap != null || event.blinks_per_minute != null);
-  const blinkGap = blinkLive ? blinkLive.gap : blink && Number.isFinite(blink.gap) ? blink.gap : savedBlink?.blink_gap;
-  const blinkRate = blinkLive
-    ? blinkLive.rate
-    : blink && Number.isFinite(blink.rate)
-      ? blink.rate
-      : savedBlink?.blinks_per_minute;
-  const blinkMarks = blinkLive?.marks ?? [];
-  const blinkGaps = blinkChartGaps(
-    (events ?? []).map((event) =>
-      shownGapAt(blinkMarks, typeof event.blink_gap === "number" ? event.blink_gap : null, new Date(event.time).getTime()),
-    ),
-  );
-  const hasBlinks = blinkGaps.some((gap) => gap != null);
-  const blinkMax = hasBlinks ? Math.max(10, ...blinkGaps.filter((gap): gap is number => gap != null)) : 10;
+  const blinkGap = blinkLive ? blinkLive.gap : null;
+  const blinkRate = blinkLive ? blinkLive.rate : null;
+  const blinkTrace = footage.blinkTrace;
+  const hasBlinks = blinkTrace.length > 0;
+  const blinkMax = hasBlinks ? Math.max(10, ...blinkTrace.map((sample) => sample.gap)) : 10;
   const blinkTop = Math.ceil(blinkMax);
   const latest = events?.at(-1);
   const remindBlink = !blinkLive?.holding && typeof blinkGap === "number" && blinkGap >= 5;
@@ -316,12 +304,12 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
             <article className="rounded-2xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:px-5">
               <div className="mb-2 flex flex-col gap-1 px-1">
                 <h2 className="text-2xl text-foreground">Blinks</h2>
-                <p className="text-sm text-muted-foreground">Seconds since your eyes last opened. The mark at 5 seconds is when the board chirps.</p>
+                <p className="text-sm text-muted-foreground">Counted on this computer, starting at 0. The mark at 5 seconds is when the board chirps.</p>
               </div>
               {hasBlinks ? (
                 <SeriesChart
-                  times={(events ?? []).map((event) => event.time)}
-                  values={blinkGaps}
+                  times={blinkTrace.map((sample) => new Date(sample.time).toISOString())}
+                  values={blinkTrace.map((sample) => sample.gap)}
                   yMax={blinkTop}
                   ticks={[...new Set([blinkTop, 5, 0])].sort((a, b) => b - a)}
                   mark={5}
@@ -334,7 +322,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
                 <div className="flex min-h-48 flex-col items-start justify-center rounded-xl bg-muted/70 px-5 py-8">
                   <p className="font-heading text-2xl text-foreground">No blink times yet</p>
                   <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                    Blink times are saved with each new score. Older points on this chart only have posture.
+                    Start the camera. Blinks are counted here and the line starts at 0.
                   </p>
                 </div>
               )}
@@ -377,7 +365,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
               <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
                 {typeof blinkRate === "number" ? blinkRate : "—"}
               </p>
-              <p className="mt-1 text-sm text-muted-foreground">Times the camera saw your eyes close during the latest score.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Times this computer saw your eyes close in the last minute.</p>
             </article>
           </section>
         </>

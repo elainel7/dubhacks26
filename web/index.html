@@ -420,7 +420,7 @@
             </p>
             <p id="empty-blinks" class="chart-message is-empty">
               <strong>No blink times yet</strong>
-              <span>Blink times are saved with each new score. Older points only have posture.</span>
+              <span>Start the camera. Blinks are counted on this computer and the line starts at 0.</span>
             </p>
           </div>
         </div>
@@ -455,7 +455,7 @@
         <article>
           <h3>Blinks this minute</h3>
           <p id="blink-rate" class="points-stat">—</p>
-          <p class="points-meta">Times the camera saw your eyes close on the latest score</p>
+          <p class="points-meta">Times this computer saw your eyes close in the last minute</p>
         </article>
       </div>
     </section>
@@ -522,7 +522,6 @@
 
     function setChartMode(mode) {
       setFrameMode(chartFrame, mode);
-      setFrameMode(blinkFrame, mode);
     }
 
     function renderSummary(summary) {
@@ -642,22 +641,8 @@
       });
     }
 
-    function renderBlinks(events) {
-      let latest = null;
-      for (let i = events.length - 1; i >= 0; i -= 1) {
-        const event = events[i];
-        if (event.blink_gap != null || event.blinks_per_minute != null) latest = event;
-        if (latest) break;
-      }
-      if (!latest) return;
-      if (latest.blink_gap != null) takeBoardGap(Number(latest.blink_gap), Date.now());
+    function renderBlinks() {
       paintBlinkClock();
-      const gapEl = document.querySelector("#blink-gap");
-      const rateEl = document.querySelector("#blink-rate");
-      if (blinkGapNow(Date.now()) == null) {
-        if (gapEl && latest.blink_gap != null) gapEl.textContent = Number(latest.blink_gap).toFixed(1) + " s";
-        if (rateEl && latest.blinks_per_minute != null) rateEl.textContent = String(latest.blinks_per_minute);
-      }
     }
 
     function renderChart(events) {
@@ -668,35 +653,15 @@
           chart.destroy();
           chart = null;
         }
-        if (blinkChart) {
-          blinkChart.destroy();
-          blinkChart = null;
-        }
         setChartMode("empty");
+        drawBlinkChart();
         return true;
       }
       const labels = events.map((event) => formatBucket(event.time, 1));
       const scores = events.map((event) => event.posture);
-      const gaps = blinkChartGaps(events.map((event) => {
-        const saved = event.blink_gap == null || Number.isNaN(Number(event.blink_gap)) ? null : Number(event.blink_gap);
-        const at = new Date(event.time).getTime();
-        return shownGapAt(saved, at);
-      }));
-      const hasBlinks = gaps.some((gap) => gap != null);
       setFrameMode(chartFrame, "ready");
       chart = lineChart(chartCanvas, chart, labels, scores, "#1c4d38", "Posture score", 100);
-      if (!hasBlinks) {
-        if (blinkChart) {
-          blinkChart.destroy();
-          blinkChart = null;
-        }
-        setFrameMode(blinkFrame, "empty");
-        return true;
-      }
-      const peak = Math.max(10, ...gaps.filter((gap) => gap != null));
-      const yMax = Math.ceil(peak);
-      setFrameMode(blinkFrame, "ready");
-      blinkChart = lineChart(blinkCanvas, blinkChart, labels, gaps, "#9c341f", "Seconds since blink", yMax);
+      drawBlinkChart();
       return true;
     }
 
@@ -817,13 +782,8 @@
         postureNeedsSit = Boolean(
           last && ((last.posture != null && last.posture <= 60) || last.label === "slouching" || last.label === "leaning_forward"),
         );
-        renderBlinks(events);
-        if (!blinkWatch.marks.length && !blinkWatch.holding) {
-          const notes = [];
-          if (last && last.blink_gap != null && Number(last.blink_gap) >= 5) notes.push("Blink");
-          if (postureNeedsSit) notes.push("Sit up taller");
-          if (last) showReminder(notes);
-        }
+        renderBlinks();
+        if (!blinkClockOn) showReminder(postureNeedsSit ? ["Sit up taller"] : []);
         const chartOk = renderChart(events);
         if (!chartOk) {
           setChartMode("empty");
@@ -918,7 +878,8 @@
     const WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
     const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
     let blinkWatch = { track: { armed: true, shutFrames: 0, lastFireAt: null }, holding: false, frozenGap: null, marks: [] };
-    let previousBoardGap = null;
+    let blinkClockOn = false;
+    let blinkTrace = [];
     let postureNeedsSit = false;
     let faceBlink = null;
     let faceBlinkLoad = null;
@@ -959,11 +920,13 @@
 
     function paintBlinkClock() {
       const now = Date.now();
-      const gap = blinkGapNow(now);
+      const measured = blinkGapNow(now);
+      const gap = measured == null ? (blinkClockOn ? 0 : null) : measured;
       if (gap == null) {
         remindPosture(now);
         return;
       }
+      if (blinkClockOn) noteBlinkSample(now, gap);
       const gapEl = document.querySelector("#blink-gap");
       const rateEl = document.querySelector("#blink-rate");
       if (gapEl) gapEl.textContent = gap.toFixed(1) + " s";
@@ -999,54 +962,27 @@
       queueBoardCmd("honk\n");
     }
 
-    function takeBoardGap(gapSeconds, now) {
-      if (!Number.isFinite(gapSeconds) || gapSeconds < 0) return;
-      const dropped = previousBoardGap == null || gapSeconds + 0.4 < previousBoardGap;
-      const implied = now - gapSeconds * 1000;
-      const last = blinkWatch.marks.length ? blinkWatch.marks[blinkWatch.marks.length - 1] : null;
-      const newer = last == null || implied > last + 250;
-      previousBoardGap = gapSeconds;
-      if (!dropped || !newer || blinkWatch.holding) return;
-      blinkWatch.marks.push(implied);
-      if (blinkWatch.marks.length > 180) blinkWatch.marks = blinkWatch.marks.slice(-180);
+    function noteBlinkSample(now, gap) {
+      const cutoff = now - 10 * 60 * 1000;
+      while (blinkTrace.length && blinkTrace[0].t < cutoff) blinkTrace.shift();
+      const last = blinkTrace[blinkTrace.length - 1];
+      if (last && now - last.t < 200 && last.gap === gap) return;
+      blinkTrace.push({ t: now, gap: gap });
+      if (blinkTrace.length > 2400) blinkTrace.splice(0, blinkTrace.length - 2400);
+      drawBlinkChart();
     }
 
-    function blinkChartGaps(gaps) {
-      const out = gaps.slice();
-      const finite = [];
-      for (let i = 0; i < out.length; i += 1) {
-        if (out[i] != null && !Number.isNaN(Number(out[i]))) finite.push(i);
+    function drawBlinkChart() {
+      if (typeof Chart === "undefined") return;
+      if (!blinkTrace.length) {
+        setFrameMode(blinkFrame, "empty");
+        return;
       }
-      if (!finite.length) return gaps;
-      const first = Number(out[finite[0]]);
-      if (finite.length === 1) {
-        if (first > 30) out[finite[0]] = 0;
-        return out;
-      }
-      if (first <= 30) return out;
-      let run = 1;
-      let floor = first;
-      for (let k = 1; k < finite.length; k += 1) {
-        const gap = Number(out[finite[k]]);
-        if (gap + 5 < floor) break;
-        if (gap < floor) floor = gap;
-        run += 1;
-      }
-      if (run >= finite.length) return out;
-      for (let k = 0; k < run; k += 1) out[finite[k]] = 0;
-      return out;
-    }
-
-    function shownGapAt(saved, at) {
-      const board = saved == null || Number.isNaN(Number(saved)) ? null : Number(saved);
-      let last = null;
-      for (let i = 0; i < blinkWatch.marks.length; i += 1) {
-        if (blinkWatch.marks[i] <= at) last = blinkWatch.marks[i];
-      }
-      if (last == null) return board;
-      const local = Math.max(0, (at - last) / 1000);
-      if (board == null) return local;
-      return Math.min(board, local);
+      const labels = blinkTrace.map((sample) => formatBucket(new Date(sample.t).toISOString(), 1));
+      const values = blinkTrace.map((sample) => sample.gap);
+      const peak = Math.max(10, ...values);
+      setFrameMode(blinkFrame, "ready");
+      blinkChart = lineChart(blinkCanvas, blinkChart, labels, values, "#9c341f", "Seconds since blink", Math.ceil(peak));
     }
 
     function watchSample(score, faceVisible, now) {
@@ -1127,7 +1063,6 @@
 
     function resetBlinkWatch() {
       blinkWatch = { track: { armed: true, shutFrames: 0, lastFireAt: null }, holding: false, frozenGap: null, marks: [] };
-      previousBoardGap = null;
       stareChirpIndex = 0;
       postureBadSince = null;
       lastHonkAskAt = 0;
@@ -1139,11 +1074,18 @@
       window.clearInterval(clockTimer);
       blinkTimer = 0;
       clockTimer = 0;
+      blinkClockOn = false;
       resetBlinkWatch();
     }
 
     function startBlinkWatch(video) {
       stopBlinkWatch();
+      blinkClockOn = true;
+      blinkTrace = [];
+      if (blinkChart) {
+        blinkChart.destroy();
+        blinkChart = null;
+      }
       loadFaceBlink().catch(() => {});
       blinkTimer = window.setInterval(() => {
         if (footageStop) return;
@@ -1167,6 +1109,7 @@
         }
       }, 50);
       clockTimer = window.setInterval(paintBlinkClock, 250);
+      paintBlinkClock();
     }
 
     function writeExclusive(work) {
@@ -1244,24 +1187,10 @@
         setFootage(footageCollecting, boardError(detail));
       }
       else if (text.startsWith("score ")) {
-        const gap = text.match(/(?:^|\s)gap=([^\s]+)/);
-        const rate = text.match(/(?:^|\s)rate=([^\s]+)/);
         const posture = text.match(/(?:^|\s)posture=([^\s]+)/);
         const head = text.match(/(?:^|\s)head=([^\s]+)/);
         postureNeedsSit = Boolean((posture && Number(posture[1]) <= 60) || (head && head[1] === "forward"));
-        if (gap) takeBoardGap(Number(gap[1]), Date.now());
-        if (blinkGapNow(Date.now()) == null) {
-          const gapEl = document.querySelector("#blink-gap");
-          const rateEl = document.querySelector("#blink-rate");
-          if (gapEl) gapEl.textContent = gap ? gap[1] + " s" : "—";
-          if (rateEl) rateEl.textContent = rate ? rate[1] : "—";
-          const notes = [];
-          if (gap && Number(gap[1]) >= 5) notes.push("Blink");
-          if (postureNeedsSit) notes.push("Sit up taller");
-          showReminder(notes);
-        } else {
-          paintBlinkClock();
-        }
+        paintBlinkClock();
       }
     }
 

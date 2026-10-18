@@ -8,8 +8,8 @@ import {
   blinksInLastMinute,
   initialBlinkWatch,
   postureHonkDue,
+  appendBlinkSample,
   stareChirpDue,
-  takeBoardGap,
   watchBlink,
   type BlinkWatch,
 } from "@/vision/blink-track";
@@ -33,6 +33,8 @@ export type BlinkSnapshot = {
   marks: number[];
 };
 
+export type BlinkTracePoint = { time: number; gap: number };
+
 export type FootageState = {
   collecting: boolean;
   starting: boolean;
@@ -40,6 +42,7 @@ export type FootageState = {
   deviceId: string | null;
   liveScore: LiveScore | null;
   blink: BlinkSnapshot | null;
+  blinkTrace: BlinkTracePoint[];
 };
 
 const serverSnapshot: FootageState = {
@@ -49,6 +52,7 @@ const serverSnapshot: FootageState = {
   deviceId: null,
   liveScore: null,
   blink: null,
+  blinkTrace: [],
 };
 
 let state: FootageState = serverSnapshot;
@@ -57,7 +61,7 @@ let link: EspLink | null = null;
 let stream: MediaStream | null = null;
 let stopRequested = false;
 let blinkWatch: BlinkWatch = initialBlinkWatch();
-let previousBoardGap: number | null = null;
+let blinkClockOn = false;
 let stareChirpIndex = 0;
 let postureBadSince: number | null = null;
 let lastHonkAskAt = 0;
@@ -72,10 +76,10 @@ function emit(next: FootageState) {
 }
 
 function blinkSnapshot(now: number): BlinkSnapshot | null {
-  const gap = blinkGapSeconds(blinkWatch, now);
-  if (gap == null) return state.blink;
+  const measured = blinkGapSeconds(blinkWatch, now);
+  if (measured == null && !blinkClockOn) return state.blink;
   return {
-    gap,
+    gap: measured ?? 0,
     rate: blinksInLastMinute(blinkWatch.marks, now),
     holding: blinkWatch.holding,
     marks: blinkWatch.marks,
@@ -114,16 +118,18 @@ function publishBlink(now = Date.now()) {
   maybeHonk(now);
   const blink = blinkSnapshot(now);
   if (!blink) return;
+  const blinkTrace = blinkClockOn ? appendBlinkSample(state.blinkTrace, now, blink.gap) : state.blinkTrace;
   if (
     state.blink &&
     state.blink.gap === blink.gap &&
     state.blink.rate === blink.rate &&
     state.blink.holding === blink.holding &&
-    state.blink.marks === blink.marks
+    state.blink.marks === blink.marks &&
+    blinkTrace === state.blinkTrace
   ) {
     return;
   }
-  emit({ ...state, blink });
+  emit({ ...state, blink, blinkTrace });
 }
 
 export function subscribeFootage(listener: () => void) {
@@ -281,9 +287,6 @@ export async function startFootage() {
         rememberDevice(id);
         emit({ ...state, deviceId: id });
       } else if (line.kind === "score") {
-        const taken = takeBoardGap(blinkWatch, line.gap, Date.now(), previousBoardGap);
-        blinkWatch = taken.watch;
-        previousBoardGap = taken.previousBoardGap;
         const now = Date.now();
         const blink = blinkSnapshot(now);
         emit({
@@ -293,8 +296,8 @@ export async function startFootage() {
             face: line.face,
             posture: line.posture,
             head: line.head,
-            gap: blink?.gap ?? line.gap,
-            rate: blink ? Math.max(line.rate, blink.rate) : line.rate,
+            gap: blink?.gap ?? 0,
+            rate: blink?.rate ?? 0,
             saved: false,
             seq: (state.liveScore?.seq ?? 0) + 1,
           },
@@ -327,6 +330,7 @@ function stopBlinkWatch() {
   window.clearInterval(clockTimer);
   blinkTimer = 0;
   clockTimer = 0;
+  blinkClockOn = false;
 }
 
 function ensureFaceBlink() {
@@ -346,10 +350,12 @@ function ensureFaceBlink() {
 function startBlinkWatch(video: HTMLVideoElement) {
   stopBlinkWatch();
   blinkWatch = initialBlinkWatch();
-  previousBoardGap = null;
+  blinkClockOn = true;
   stareChirpIndex = 0;
   postureBadSince = null;
   lastHonkAskAt = 0;
+  emit({ ...state, blink: { gap: 0, rate: 0, holding: false, marks: [] }, blinkTrace: [] });
+  publishBlink(Date.now());
   void ensureFaceBlink()?.catch(() => {
     /* The next camera start tries the landmarker again. Frames still go to the board. */
   });
@@ -390,7 +396,6 @@ export async function stopFootage() {
   stopRequested = true;
   stopBlinkWatch();
   blinkWatch = initialBlinkWatch();
-  previousBoardGap = null;
   stareChirpIndex = 0;
   postureBadSince = null;
   lastHonkAskAt = 0;
@@ -401,5 +406,5 @@ export async function stopFootage() {
   const video = document.getElementById("perch-footage");
   if (video instanceof HTMLVideoElement) video.srcObject = null;
   await current?.close();
-  emit({ ...state, collecting: false, starting: false, blink: null });
+  emit({ ...state, collecting: false, starting: false });
 }
