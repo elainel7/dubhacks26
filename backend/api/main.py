@@ -15,6 +15,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel, Field, field_validator
 
+from api.points import (
+    DEFAULT_TZ,
+    POINTS_DEFAULT_HOURS,
+    POINTS_MAX_HOURS,
+    UnknownTimezone,
+    resolve_timezone,
+    score_posture,
+)
+
 app = FastAPI(title="Posture API")
 
 # The dashboard is a static site (GoDaddy or a local file server) on another origin.
@@ -203,6 +212,130 @@ def _clean_user_id(user_id: str) -> str:
     return user_id
 
 
+POINTS_SQL = """
+SELECT
+  bucket,
+  good_samples,
+  bad_samples,
+  samples
+FROM posture_per_minute
+WHERE user_id = %s
+  AND bucket >= now() - (%s * INTERVAL '1 hour')
+ORDER BY bucket ASC
+"""
+
+LEADERBOARD_SQL = """
+SELECT
+  p.user_id,
+  COALESCE(NULLIF(BTRIM(u.display_name), ''), p.user_id) AS display_name,
+  p.bucket,
+  p.good_samples,
+  p.bad_samples,
+  p.samples
+FROM posture_per_minute p
+LEFT JOIN users u ON u.user_id = p.user_id
+WHERE p.bucket >= now() - (%s * INTERVAL '1 hour')
+ORDER BY p.user_id ASC, p.bucket ASC
+"""
+
+
+class PointEventOut(BaseModel):
+    time: datetime
+    points: int
+    reason: str
+
+
+class LevelOut(BaseModel):
+    level: int
+    title: str
+    points_into_level: int
+    points_to_next_level: int
+    xp: int
+
+
+class BadgeOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    earned: bool
+    earned_at: datetime | None = None
+
+
+class PointsResponse(BaseModel):
+    user_id: str
+    hours: float
+    tz: str
+    total_points: int
+    points_today: int
+    today_upright_minutes: int
+    daily_goal_minutes: int
+    goal_progress: float
+    flow_streak_minutes: int
+    flow_multiplier: float
+    best_streak_minutes: int
+    day_streak: int
+    level: LevelOut
+    badges: list[BadgeOut]
+    recent: list[PointEventOut]
+
+
+class LeaderOut(BaseModel):
+    rank: int
+    display_name: str
+    points: int
+
+
+class LeaderboardResponse(BaseModel):
+    hours: float
+    tz: str
+    leaders: list[LeaderOut]
+
+
+def _require_tz(tz: str) -> str:
+    try:
+        resolve_timezone(tz)
+    except UnknownTimezone as exc:
+        raise HTTPException(status_code=400, detail="Unknown timezone") from exc
+    return tz.strip() or DEFAULT_TZ
+
+
+def fetch_point_rows(conn, user_id: str, hours: float) -> list[dict]:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(POINTS_SQL, (user_id, hours))
+        return list(cur.fetchall())
+
+
+def fetch_leaderboard_rows(conn, hours: float) -> list[dict]:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(LEADERBOARD_SQL, (hours,))
+        return list(cur.fetchall())
+
+
+def _display_name(row: dict) -> str:
+    name = str(row.get("display_name") or "").strip()
+    return name or str(row["user_id"])
+
+
+def score_leaderboard(rows: list[dict], tz: str, limit: int, now: datetime | None = None) -> list[dict]:
+    grouped: dict[str, dict] = {}
+    for row in rows:
+        user_id = str(row["user_id"])
+        bucket = grouped.get(user_id)
+        if bucket is None:
+            bucket = {"display_name": _display_name(row), "rows": []}
+            grouped[user_id] = bucket
+        bucket["rows"].append(row)
+    ranked = []
+    for entry in grouped.values():
+        scored = score_posture(entry["rows"], tz=tz, now=now)
+        ranked.append({"display_name": entry["display_name"], "points": scored["total_points"]})
+    ranked.sort(key=lambda item: (-item["points"], item["display_name"]))
+    return [
+        {"rank": index, "display_name": item["display_name"], "points": item["points"]}
+        for index, item in enumerate(ranked[:limit], start=1)
+    ]
+
+
 @app.get("/users/{user_id}/timeline", response_model=TimelineResponse)
 def timeline(
     user_id: str,
@@ -230,3 +363,28 @@ def summary(
 @app.post("/events", response_model=PostureEventOut, status_code=201)
 def create_event(event: PostureEventIn, conn=Depends(get_conn)):
     return insert_event(conn, event)
+
+
+@app.get("/users/{user_id}/points", response_model=PointsResponse)
+def user_points(
+    user_id: str,
+    hours: float = Query(default=POINTS_DEFAULT_HOURS, gt=0, le=POINTS_MAX_HOURS),
+    tz: str = Query(default=DEFAULT_TZ),
+    conn=Depends(get_conn),
+):
+    user_id = _clean_user_id(user_id)
+    tz = _require_tz(tz)
+    scored = score_posture(fetch_point_rows(conn, user_id, hours), tz=tz)
+    return {"user_id": user_id, "hours": hours, "tz": tz, **scored}
+
+
+@app.get("/leaderboard", response_model=LeaderboardResponse)
+def leaderboard(
+    hours: float = Query(default=POINTS_DEFAULT_HOURS, gt=0, le=POINTS_MAX_HOURS),
+    limit: int = Query(default=10, gt=0, le=50),
+    tz: str = Query(default=DEFAULT_TZ),
+    conn=Depends(get_conn),
+):
+    tz = _require_tz(tz)
+    leaders = score_leaderboard(fetch_leaderboard_rows(conn, hours), tz, limit)
+    return {"hours": hours, "tz": tz, "leaders": leaders}

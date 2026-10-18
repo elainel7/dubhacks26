@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { DeviceChart } from "@/components/device-chart";
+import { PointsPanel } from "@/components/points-panel";
 import { SiteNav } from "@/components/site-nav";
 import { normalizeDeviceId } from "@/lib/device-id";
 
@@ -37,7 +38,12 @@ async function DeviceBody({ params }: DevicePageProps) {
   const deviceId = normalizeDeviceId(decodeURIComponent(raw));
   if (!deviceId) notFound();
 
-  return <DeviceChart deviceId={deviceId} />;
+  return (
+    <div className="flex flex-col gap-10">
+      <DeviceChart deviceId={deviceId} />
+      <PointsPanel deviceId={deviceId} />
+    </div>
+  );
 }
 
 export default function DevicePage({ params }: DevicePageProps) {
@@ -46,7 +52,7 @@ export default function DevicePage({ params }: DevicePageProps) {
       id="content"
       className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-6 md:px-6 md:py-10"
     >
-      <SiteNav />
+      <SiteNav current="device" />
       <Suspense fallback={<DeviceLoading />}>
         <DeviceBody params={params} />
       </Suspense>
