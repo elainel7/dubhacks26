@@ -42,6 +42,10 @@ test("score, device, and error lines parse", () => {
     },
   );
   assert.deepEqual(parseEspLine("error wifi"), { kind: "error", text: "wifi" });
+  assert.deepEqual(parseEspLine("Wi-Fi connected. IP 192.168.1.20 rssi -48"), {
+    kind: "other",
+    text: "Wi-Fi connected. IP 192.168.1.20 rssi -48",
+  });
   assert.deepEqual(parseEspLine("note You've been staring."), {
     kind: "note",
     text: "You've been staring.",
