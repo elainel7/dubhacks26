@@ -438,7 +438,7 @@
     const deviceSelect = document.querySelector("#device-id");
     function boardError(text) {
       if (text === "wifi") {
-        return "The ESP32 is not on Wi-Fi. Check the network name in secrets.h. An open network needs an empty password, and the network has to be 2.4 GHz.";
+        return "The ESP32 is not on Wi-Fi. It only joins 2.4 GHz. Use a normal password, or an empty password for an open network. 5 GHz, eduroam, and hotel login pages will not connect. A phone hotspot will.";
       }
       if (text === "wifi has no internet") {
         return "The ESP32 joined Wi-Fi, but that network has no internet. Perceptron cannot be reached. Use a 2.4 GHz network that opens normal websites, with no login page.";
@@ -840,6 +840,10 @@
         const detail = text.slice(6).trim();
         if (detail === "bad frame" || detail === "partial") countSheetOk = false;
         setFootage(footageCollecting, boardError(detail));
+      }
+      else if (text.startsWith("Wi-Fi connected")) {
+        showBoard(text);
+        if (footageError.textContent.indexOf("not on Wi-Fi") !== -1) setFootage(footageCollecting, "");
       }
       else if (text.startsWith("note ")) showBoard(text.slice(5).trim());
       else if (

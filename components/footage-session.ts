@@ -99,7 +99,7 @@ function grab(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
 
 function boardErrorText(text: string) {
   if (text === "wifi") {
-    return "The ESP32 is not on Wi-Fi. Check the network name in secrets.h. An open network needs an empty password, and the network has to be 2.4 GHz.";
+    return "The ESP32 is not on Wi-Fi. It only joins 2.4 GHz. Use a normal password, or an empty password for an open network. 5 GHz, eduroam, and hotel login pages will not connect. A phone hotspot will.";
   }
   if (text === "wifi has no internet") {
     return "The ESP32 joined Wi-Fi, but that network has no internet. Perceptron cannot be reached. Use a 2.4 GHz network that opens normal websites, with no login page.";
@@ -172,6 +172,9 @@ export async function startFootage() {
         if (!id) return;
         rememberDevice(id);
         emit({ ...state, deviceId: id });
+      } else if (line.kind === "other" && line.text.startsWith("Wi-Fi connected")) {
+        const clearWifi = state.error != null && state.error.includes("not on Wi-Fi");
+        emit({ ...state, boardLine: line.text, error: clearWifi ? null : state.error });
       } else if ((line.kind === "note" || line.kind === "other") && line.text) {
         emit({ ...state, boardLine: line.text });
       } else if (line.kind === "score") {

@@ -8,6 +8,8 @@
 // Copy secrets.example.h to secrets.h and fill it in. secrets.h stays off git.
 //
 // Board: ESP32S3 Dev Module, USB CDC On Boot Enabled, PSRAM Enabled.
+// Wi-Fi is 2.4 GHz only: a normal password, or an empty password for an open
+// network. Not 5 GHz, and not a network that asks for a username (eduroam).
 // Native USB ignores baud. The website opens the port at 921600.
 // Close the Serial Monitor before the website connects. One program holds the port.
 //
@@ -38,6 +40,10 @@
 #include "secrets.h"
 #else
 #error "Copy secrets.example.h to secrets.h and fill in Wi-Fi, the device id, and the Perceptron key."
+#endif
+
+#if defined(CONFIG_IDF_TARGET_ESP32)
+#error "Pick Tools > Board > ESP32S3 Dev Module. On an ESP32-WROVER, GPIO6-11 are the flash bus. This sketch drives those pins for the LEDs and LCD, and that stops Wi-Fi."
 #endif
 
 constexpr int kFrameW = 96;
@@ -107,6 +113,9 @@ static uint8_t* payload = nullptr;
 static bool ready = false;
 static bool wifiUp = false;
 static bool wifiNoted = false;
+static int wifiAttempt = 0;
+static wl_status_t wifiBeginStatus = WL_IDLE_STATUS;
+static uint32_t wifiDownSince = 0;
 static PerchState alerts;
 static uint32_t lastApplyMs = 0;
 static uint32_t lastHelloMs = 0;
@@ -748,22 +757,88 @@ void feed(uint8_t byte) {
   acceptFrame();
 }
 
+const char* wifiFailHint(wl_status_t status) {
+  if (PERCH_WIFI_SSID[0] == '\0' || status == WL_NO_SSID_AVAIL) {
+    return "That network name is not on 2.4 GHz. This board cannot join 5 GHz. Check secrets.h, or use a phone hotspot.";
+  }
+  if (status == WL_CONNECT_FAILED || wifiBeginStatus == WL_CONNECT_FAILED) {
+    return "The password was rejected, or the network wants a username (eduroam, campus, hotel). Use a phone hotspot.";
+  }
+  return "The join timed out. Stay near the router, confirm the password in secrets.h, or use a phone hotspot.";
+}
+
+void noteWifiFailure(wl_status_t status) {
+  if (wifiNoted) return;
+  wifiNoted = true;
+  sayError("wifi");
+  Serial.print("Wi-Fi failed for \"");
+  Serial.print(PERCH_WIFI_SSID);
+  Serial.println("\".");
+  Serial.println(wifiFailHint(status));
+}
+
+// WL_DISCONNECTED is the normal status while the radio is scanning. Core 3.x
+// uses WL_IDLE_STATUS only after the AP accepts the board, while DHCP runs.
+bool wifiStillJoining(wl_status_t status, uint32_t now) {
+  if (wifiBeginStatus == WL_CONNECT_FAILED) return false;
+  if (now - lastWifiTryMs >= 30000) return false;
+  return status == WL_IDLE_STATUS || status == WL_DISCONNECTED || status == WL_NO_SHIELD;
+}
+
 void beginWifi() {
-  if (PERCH_WIFI_PASSWORD[0] == '\0') WiFi.begin(PERCH_WIFI_SSID);
-  else WiFi.begin(PERCH_WIFI_SSID, PERCH_WIFI_PASSWORD);
+  lastWifiTryMs = millis();
+  wifiNoted = false;
+  wifiAttempt++;
+  if (PERCH_WIFI_SSID[0] == '\0' || strlen(PERCH_WIFI_SSID) > 32 || strlen(PERCH_WIFI_PASSWORD) > 64) {
+    wifiBeginStatus = WL_CONNECT_FAILED;
+    Serial.println("secrets.h needs a Wi-Fi name of 1 to 32 characters and a password of 0 to 64.");
+    return;
+  }
+  // Driver logs share this USB serial port with the frame protocol.
+  esp_log_level_set("wifi", ESP_LOG_NONE);
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+  if (PERCH_WIFI_PASSWORD[0] == '\0') {
+    WiFi.setMinSecurity(WIFI_AUTH_OPEN);
+    wifiBeginStatus = WiFi.begin(PERCH_WIFI_SSID);
+  } else {
+    WiFi.setMinSecurity(WIFI_AUTH_WPA_PSK);
+    wifiBeginStatus = WiFi.begin(PERCH_WIFI_SSID, PERCH_WIFI_PASSWORD);
+  }
+  Serial.print("Joining Wi-Fi \"");
+  Serial.print(PERCH_WIFI_SSID);
+  Serial.print("\" attempt ");
+  Serial.print(wifiAttempt);
+  Serial.println(PERCH_WIFI_PASSWORD[0] == '\0' ? " (open network)." : " (password set).");
+  if (wifiBeginStatus == WL_CONNECT_FAILED) {
+    Serial.println("WiFi.begin failed immediately, so this attempt never started.");
+  }
 }
 
 void connectWifi() {
-  esp_log_level_set("wifi", ESP_LOG_NONE);
+  // Do not call WiFi.disconnect() before WiFi.begin(). On Arduino-ESP32 2.x,
+  // begin() treats a failed esp_wifi_disconnect() as fatal and returns
+  // without calling esp_wifi_connect(). A disconnect that is still in
+  // progress also cancels the new join on 3.x.
   WiFi.persistent(false);
+  WiFi.setSleep(false);
   WiFi.mode(WIFI_STA);
-  WiFi.setAutoReconnect(false);
-  WiFi.disconnect(false, false);
-  delay(100);
-  beginWifi();
-  lastWifiTryMs = millis();
   wifiUp = false;
-  wifiNoted = false;
+  wifiDownSince = millis();
+  beginWifi();
+}
+
+void restartWifi() {
+  WiFi.setAutoReconnect(false);
+  WiFi.mode(WIFI_OFF);
+  delay(200);
+  WiFi.persistent(false);
+  WiFi.setSleep(false);
+  WiFi.mode(WIFI_STA);
+  beginWifi();
+  wifiDownSince = millis();
 }
 
 void hardwareHello() {
@@ -830,25 +905,30 @@ void loop() {
   }
   wl_status_t wifiStatus = WiFi.status();
   if (wifiStatus == WL_CONNECTED) {
+    wifiDownSince = 0;
     if (!wifiUp) {
       wifiUp = true;
+      wifiNoted = false;
+      wifiBeginStatus = WL_CONNECTED;
       configTime(0, 0, "pool.ntp.org");
-      Serial.println("Wi-Fi connected.");
+      Serial.print("Wi-Fi connected. IP ");
+      Serial.print(WiFi.localIP());
+      Serial.print(" rssi ");
+      Serial.println(WiFi.RSSI());
     }
   } else {
     wifiUp = false;
-    bool stillConnecting = wifiStatus == WL_IDLE_STATUS && now - lastWifiTryMs < 20000;
-    if (!wifiNoted && !stillConnecting && now - lastWifiTryMs > 12000) {
-      wifiNoted = true;
-      sayError("wifi");
-      Serial.println("not saved to Tiger Data. the ESP32 is not on Wi-Fi.");
-    }
-    if (!stillConnecting && rxState == kWait0 && now - lastWifiTryMs > 20000) {
-      WiFi.disconnect(false, false);
-      beginWifi();
-      lastWifiTryMs = now;
+    if (wifiDownSince == 0) wifiDownSince = now;
+    bool joining = wifiStillJoining(wifiStatus, now);
+    uint32_t downFor = now - wifiDownSince;
+    if (!joining && !wifiNoted && downFor > 3000) noteWifiFailure(wifiStatus);
+    bool secretsOk = PERCH_WIFI_SSID[0] != '\0' && strlen(PERCH_WIFI_SSID) <= 32 && strlen(PERCH_WIFI_PASSWORD) <= 64;
+    if (!joining && secretsOk && downFor > 15000 && rxState == kWait0 && frameCount == 0 && Serial.available() == 0) {
+      restartWifi();
     }
   }
+
+  delay(1);
 
   if (frameCount == 0 && rxState == kWait0 && now - lastHelloMs > 2000) hello();
 
