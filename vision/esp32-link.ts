@@ -126,8 +126,6 @@ export async function connectEsp32(
 ): Promise<EspLink> {
   const port = await requestPort();
   await port.open({ baudRate: 921600 });
-  // Opening the port raises DTR and holds an ESP32-S3 in the bootloader, so the sketch never prints.
-  await port.setSignals?.({ dataTerminalReady: false, requestToSend: false });
   if (!port.writable || !port.readable) {
     throw new Error("The serial port did not open a data stream.");
   }
@@ -226,7 +224,7 @@ export async function connectEsp32(
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         heardResolve = null;
-        reject(new Error("The ESP32 sent nothing. Close the Arduino Serial Monitor, then choose the port that shows up when the board is plugged in."));
+        reject(new Error("The ESP32 sent nothing. Close the Arduino Serial Monitor, unplug the board, plug it back in, and choose the port that appears."));
       }, 20_000);
       heardResolve = () => {
         clearTimeout(timer);

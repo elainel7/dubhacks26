@@ -751,6 +751,8 @@
     let lastLine = "";
     let idleLatched = false;
     let sheetCount = 0;
+    let sawBytes = false;
+    let reopenStarted = false;
 
     function crc16(bytes) {
       let crc = 0xffff;
@@ -844,6 +846,28 @@
       }
     }
 
+    async function reopenBoard() {
+      if (reopenStarted || footageStop || boardReady || !footagePort) return;
+      reopenStarted = true;
+      showBoard("The board restarted. Listening again…");
+      try {
+        try { if (footageReader) await footageReader.cancel(); } catch (err) {}
+        try { if (footageWriter) footageWriter.releaseLock(); } catch (err) {}
+        try { if (footageReader) footageReader.releaseLock(); } catch (err) {}
+        footageReader = null;
+        footageWriter = null;
+        try { await footagePort.close(); } catch (err) {}
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        if (footageStop) return;
+        await footagePort.open({ baudRate: 921600 });
+        footageWriter = footagePort.writable.getWriter();
+        footageReader = footagePort.readable.getReader();
+        readBoard();
+      } catch (err) {
+        /* The wait loop reports the silence. */
+      }
+    }
+
     async function readBoard() {
       const decoder = new TextDecoder();
       let buffer = "";
@@ -851,6 +875,7 @@
         while (footageReader) {
           const { value, done } = await footageReader.read();
           if (done) break;
+          if (value && value.length) sawBytes = true;
           buffer += decoder.decode(value || new Uint8Array(), { stream: true });
           let newline = buffer.indexOf("\n");
           while (newline >= 0) {
@@ -860,8 +885,9 @@
           }
         }
       } catch (err) {
-        if (!footageStop) setFootage(false, "The ESP32 disconnected.");
+        /* Opening the port can reboot the board and drop this stream. */
       }
+      if (!footageStop && !boardReady) reopenBoard();
     }
 
     function grabGray(video, canvas) {
@@ -949,9 +975,6 @@
         footagePort = await portPromise;
         footageChosen = footagePort;
         await footagePort.open({ baudRate: 921600 });
-        try {
-          await footagePort.setSignals({ dataTerminalReady: false, requestToSend: false });
-        } catch (err) {}
         footageWriter = footagePort.writable.getWriter();
         footageReader = footagePort.readable.getReader();
         readBoard();
@@ -959,11 +982,13 @@
         canvas.width = FRAME_W;
         canvas.height = FRAME_H;
         setFootage(true, "");
+        showBoard("Waiting for the ESP32…");
         const bootStart = performance.now();
         while (!boardReady) {
           if (footageStop) return;
           if (performance.now() - bootStart > 20000) {
-            throw new Error("The ESP32 sent nothing. Close the Arduino Serial Monitor, then choose the port that shows up when the board is plugged in.");
+            const heard = sawBytes ? "The port sent bytes, but not a Perch line." : "The ESP32 sent nothing.";
+            throw new Error(heard + " Close the Arduino Serial Monitor, unplug the board, plug it back in, and choose the port that appears.");
           }
           await new Promise((resolve) => window.setTimeout(resolve, 50));
         }
