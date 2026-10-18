@@ -107,6 +107,9 @@ function boardErrorText(text: string) {
   if (text === "could not reach Perceptron" || text.startsWith("perceptron -")) {
     return "The ESP32 could not open a connection to Perceptron, so nothing was saved. Upload the latest sketch. Use a 2.4 GHz network with internet and no login page.";
   }
+  if (text === "parse") {
+    return "Perceptron answered, but the score was not readable. Upload the latest sketch, then try again.";
+  }
   return text;
 }
 

@@ -33,6 +33,7 @@
 
 #include "jpeg_gray.h"
 #include "perch_alerts.h"
+#include "score_json.h"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -84,7 +85,8 @@ static const char kPrompt[] =
     "Do not identify the person.";
 
 static const char kPrefix[] =
-    "{\"model\":\"perceptron-mk1.5\",\"max_completion_tokens\":200,"
+    "{\"model\":\"perceptron-mk1.5\",\"max_completion_tokens\":300,"
+    "\"reasoning_effort\":\"none\",\"vision_config\":{\"enable_thinking\":false},"
     "\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"desk_state\",\"strict\":true,\"schema\":{"
     "\"type\":\"object\",\"additionalProperties\":false,\"properties\":{"
     "\"face_visible\":{\"type\":\"boolean\"},"
@@ -411,44 +413,6 @@ bool appendText(size_t* used, const char* text) {
   return true;
 }
 
-const char* afterKey(const char* json, const char* key) {
-  char pattern[40];
-  snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-  const char* found = strstr(json, pattern);
-  if (!found) return nullptr;
-  found += strlen(pattern);
-  while (*found == ' ' || *found == '\\' || *found == '"' || *found == ':' || *found == '\n' ||
-         *found == '\r' || *found == '\t') {
-    found++;
-  }
-  return found;
-}
-
-void readToken(const char* from, char* out, size_t cap) {
-  size_t n = 0;
-  while (from[n] && from[n] != '"' && from[n] != '\\' && from[n] != ',' && from[n] != '}' &&
-         n + 1 < cap) {
-    out[n] = from[n];
-    n++;
-  }
-  out[n] = 0;
-}
-
-bool knownHead(const char* value) {
-  return strcmp(value, "upright") == 0 || strcmp(value, "forward") == 0 || strcmp(value, "unknown") == 0;
-}
-
-bool knownShoulders(const char* value) {
-  return strcmp(value, "level") == 0 || strcmp(value, "tilted") == 0 || strcmp(value, "unknown") == 0;
-}
-
-int postureOutOf100(int raw) {
-  int score = raw >= 1 && raw <= 10 ? raw * 10 : raw;
-  if (score < 1) score = 1;
-  if (score > 100) score = 100;
-  return score;
-}
-
 bool clockReady() {
   time_t now = time(nullptr);
   return now > 1700000000;
@@ -649,30 +613,33 @@ void scoreSheet() {
     return;
   }
 
-  const char* json = response.c_str();
-  const char* faceAt = afterKey(json, "face_visible");
-  const char* blinksAt = afterKey(json, "blink_count");
-  const char* postureAt = afterKey(json, "posture_score");
-  const char* headAt = afterKey(json, "head");
-  const char* shouldersAt = afterKey(json, "shoulders");
-  if (!faceAt || !blinksAt || !postureAt || !headAt || !shouldersAt) {
-    Serial.println("not saved to Tiger Data. the score could not be read.");
-    sayError("parse");
+  size_t replyLen = response.length();
+  char* reply = (char*)allocBuf(replyLen + 1);
+  if (!reply) {
+    sayError("ram");
     releaseHost();
     return;
   }
+  memcpy(reply, response.c_str(), replyLen + 1);
+  DeskScoreRead score;
+  bool parsed = readDeskScore(reply, &score);
+  if (!parsed) {
+    char excerpt[160];
+    deskScoreExcerpt(reply, excerpt, sizeof(excerpt));
+    Serial.print("not saved to Tiger Data. the score could not be read. ");
+    Serial.println(excerpt);
+    sayError("parse");
+    free(reply);
+    releaseHost();
+    return;
+  }
+  free(reply);
 
-  bool face = faceAt[0] == 't';
-  int blinks = atoi(blinksAt);
-  if (blinks < 0) blinks = 0;
-  if (blinks > 4) blinks = 4;
-  int posture = postureOutOf100(atoi(postureAt));
-  char head[16];
-  char shoulders[16];
-  readToken(headAt, head, sizeof(head));
-  readToken(shouldersAt, shoulders, sizeof(shoulders));
-  if (!knownHead(head)) strncpy(head, "unknown", sizeof(head));
-  if (!knownShoulders(shoulders)) strncpy(shoulders, "unknown", sizeof(shoulders));
+  bool face = score.face;
+  int blinks = score.blinks;
+  int posture = score.posture;
+  const char* head = score.head;
+  const char* shoulders = score.shoulders;
 
   uint32_t span = stamps[kPanels - 1] - stamps[0];
   PerchReading reading{face, blinks, posture, span > 4000u};
