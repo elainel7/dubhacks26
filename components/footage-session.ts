@@ -5,11 +5,20 @@ import { normalizeDeviceId } from "@/lib/device-id";
 import { serialAvailable } from "@/lib/serial";
 import { connectEsp32, FRAME_H, FRAME_W, type EspLink } from "@/vision/esp32-link";
 
+export type LiveScore = {
+  face: boolean;
+  posture: number;
+  head: string;
+  saved: boolean;
+  seq: number;
+};
+
 export type FootageState = {
   collecting: boolean;
   starting: boolean;
   error: string | null;
   deviceId: string | null;
+  liveScore: LiveScore | null;
 };
 
 const serverSnapshot: FootageState = {
@@ -17,6 +26,7 @@ const serverSnapshot: FootageState = {
   starting: false,
   error: null,
   deviceId: null,
+  liveScore: null,
 };
 
 let state: FootageState = serverSnapshot;
@@ -153,6 +163,22 @@ export async function startFootage() {
         if (!id) return;
         rememberDevice(id);
         emit({ ...state, deviceId: id });
+      } else if (line.kind === "score") {
+        emit({
+          ...state,
+          liveScore: {
+            face: line.face,
+            posture: line.posture,
+            head: line.head,
+            saved: false,
+            seq: (state.liveScore?.seq ?? 0) + 1,
+          },
+        });
+      } else if (line.kind === "saved" && state.liveScore) {
+        emit({
+          ...state,
+          liveScore: { ...state.liveScore, saved: true, seq: state.liveScore.seq + 1 },
+        });
       } else if (line.kind === "error") {
         emit({ ...state, error: boardErrorText(line.text) });
       }

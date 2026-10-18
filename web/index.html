@@ -228,9 +228,96 @@
       color: var(--muted);
       font-size: 0.92rem;
     }
+    .points-card { margin-bottom: 12px; }
+    .points-head {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px 16px;
+      margin-bottom: 12px;
+    }
+    .points-head h2 {
+      margin: 0;
+      color: var(--ink);
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.7rem;
+      letter-spacing: -0.03em;
+    }
+    .points-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .points-grid article {
+      background: var(--soft);
+      border-radius: 14px;
+      padding: 14px 14px 12px;
+    }
+    .points-grid h3 {
+      margin: 0;
+      color: var(--muted);
+      font-family: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .points-stat {
+      margin: 8px 0 0;
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.7rem;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+    }
+    .points-meta { margin: 6px 0 0; color: var(--muted); font-size: 0.92rem; }
+    .level-track {
+      height: 8px;
+      margin-top: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--line);
+    }
+    .level-track span {
+      display: block;
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      background: var(--forest);
+    }
+    .board {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 12px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .board li {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: var(--soft);
+    }
+    .board .rank {
+      display: grid;
+      place-items: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      background: var(--forest);
+      color: var(--paper);
+      font-weight: 700;
+    }
+    .board .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .board .pts { font-family: Fraunces, Georgia, serif; font-size: 1.25rem; }
+    #points-status.is-error, #board-status.is-error { color: var(--bad); font-weight: 700; }
     @media (max-width: 720px) {
       main { padding: 20px 16px 48px; }
-      .summary-stats { grid-template-columns: 1fr; }
+      .summary-stats, .points-grid { grid-template-columns: 1fr; }
       .summary-stats p { font-size: 2rem; }
       .device-controls { align-items: stretch; }
       label, select, button { width: 100%; }
@@ -285,6 +372,32 @@
         <p id="samples">—</p>
       </article>
     </section>
+    <section class="points-card chart-panel" aria-label="Points">
+      <div class="points-head">
+        <h2>Points</h2>
+        <p id="points-status" role="status">Loading points…</p>
+      </div>
+      <div class="points-grid">
+        <article>
+          <h3>Level</h3>
+          <p id="level-title" class="points-stat">—</p>
+          <p id="level-meta" class="points-meta">Last 7 days</p>
+          <div id="level-track" class="level-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Level progress">
+            <span id="level-fill"></span>
+          </div>
+        </article>
+        <article>
+          <h3>Today</h3>
+          <p id="goal-stat" class="points-stat">—</p>
+          <p id="goal-meta" class="points-meta">Upright minutes toward 60</p>
+        </article>
+        <article>
+          <h3>Streak</h3>
+          <p id="streak-stat" class="points-stat">—</p>
+          <p id="streak-meta" class="points-meta">Flow multiplier and day streak</p>
+        </article>
+      </div>
+    </section>
     <section class="chart-panel" aria-labelledby="chart-title">
       <div class="chart-heading">
         <h2 id="chart-title">Posture</h2>
@@ -302,6 +415,14 @@
         </p>
       </div>
       <p id="status" role="status"></p>
+    </section>
+    <section class="chart-panel" aria-labelledby="board-title">
+      <div class="chart-heading">
+        <h2 id="board-title">Leaderboard</h2>
+        <p>Points over the last 7 days. The name is the display name, or the device id when none is stored.</p>
+      </div>
+      <ol id="leaderboard" class="board"></ol>
+      <p id="board-status" role="status"></p>
     </section>
     <p class="footnote">Perch · no more hunching. This page reads one device id at a time.</p>
   </main>
@@ -471,11 +592,103 @@
     }
 
     let requestId = 0;
+    let pointsRequest = 0;
+    let boardRequest = 0;
+
+    function renderPoints(data) {
+      const status = document.querySelector("#points-status");
+      status.className = "";
+      status.textContent = "Last 7 days · Pacific time";
+      const level = data.level || {};
+      document.querySelector("#level-title").textContent = level.title || "—";
+      const into = Number(level.points_into_level) || 0;
+      const remaining = Number(level.points_to_next_level) || 0;
+      const span = into + remaining;
+      const pct = span > 0 ? Math.round((into / span) * 100) : 0;
+      document.querySelector("#level-meta").textContent =
+        "Level " + (level.level ?? "—") + " · " + (data.total_points ?? 0) + " points · " + remaining + " to next";
+      document.querySelector("#level-fill").style.width = pct + "%";
+      const track = document.querySelector("#level-track");
+      track.setAttribute("aria-valuenow", String(into));
+      track.setAttribute("aria-valuemax", String(span || 100));
+      track.setAttribute("aria-label", (level.title || "Level") + ", " + pct + " percent to the next level");
+      document.querySelector("#goal-stat").textContent =
+        (data.today_upright_minutes ?? 0) + " / " + (data.daily_goal_minutes ?? 60);
+      document.querySelector("#goal-meta").textContent = (data.points_today ?? 0) + " points today";
+      const minutes = data.flow_streak_minutes ?? 0;
+      const multiplier = data.flow_multiplier ?? 1;
+      const multLabel = Number.isInteger(multiplier) ? String(multiplier) : String(multiplier);
+      document.querySelector("#streak-stat").textContent = minutes + " min ×" + multLabel;
+      const days = data.day_streak ?? 0;
+      const dayLabel = days === 1 ? "1 day streak" : days + " day streak";
+      document.querySelector("#streak-meta").textContent =
+        dayLabel + " · best " + (data.best_streak_minutes ?? 0) + " min";
+    }
+
+    async function loadPoints(deviceId) {
+      const id = ++pointsRequest;
+      try {
+        const res = await fetch(apiBase + "/users/" + encodeURIComponent(deviceId) + "/points?hours=168");
+        if (id !== pointsRequest) return;
+        if (!res.ok) throw new Error("points " + res.status);
+        renderPoints(await res.json());
+      } catch (err) {
+        if (id !== pointsRequest) return;
+        const status = document.querySelector("#points-status");
+        status.className = "is-error";
+        status.textContent = "Points are unavailable right now.";
+      }
+    }
+
+    function renderBoard(data) {
+      const list = document.querySelector("#leaderboard");
+      const status = document.querySelector("#board-status");
+      list.replaceChildren();
+      const leaders = (data && data.leaders) || [];
+      if (!leaders.length) {
+        status.className = "";
+        status.textContent = "No points in the last 7 days yet.";
+        return;
+      }
+      leaders.forEach((leader) => {
+        const item = document.createElement("li");
+        const rank = document.createElement("span");
+        rank.className = "rank";
+        rank.textContent = String(leader.rank);
+        const name = document.createElement("span");
+        name.className = "name";
+        name.textContent = leader.display_name;
+        const pts = document.createElement("span");
+        pts.className = "pts";
+        pts.textContent = String(leader.points) + " pts";
+        item.append(rank, name, pts);
+        list.appendChild(item);
+      });
+      status.className = "";
+      status.textContent = "";
+    }
+
+    async function loadBoard() {
+      const id = ++boardRequest;
+      try {
+        const res = await fetch(apiBase + "/leaderboard?hours=168&limit=8");
+        if (id !== boardRequest) return;
+        if (!res.ok) throw new Error("leaderboard " + res.status);
+        renderBoard(await res.json());
+      } catch (err) {
+        if (id !== boardRequest) return;
+        const status = document.querySelector("#board-status");
+        status.className = "is-error";
+        status.textContent = "Leaderboard is unavailable right now.";
+      }
+    }
 
     async function load(options) {
       const quiet = Boolean(options && options.quiet);
       const id = ++requestId;
       const deviceId = deviceSelect.value;
+      loadPoints(deviceId);
+      loadBoard();
       if (!quiet) {
         clearSummary();
         setChartMode("loading");
