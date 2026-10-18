@@ -677,11 +677,11 @@
       }
       const labels = events.map((event) => formatBucket(event.time, 1));
       const scores = events.map((event) => event.posture);
-      const gaps = events.map((event) => {
+      const gaps = blinkChartGaps(events.map((event) => {
         const saved = event.blink_gap == null || Number.isNaN(Number(event.blink_gap)) ? null : Number(event.blink_gap);
         const at = new Date(event.time).getTime();
         return shownGapAt(saved, at);
-      });
+      }));
       const hasBlinks = gaps.some((gap) => gap != null);
       setFrameMode(chartFrame, "ready");
       chart = lineChart(chartCanvas, chart, labels, scores, "#1c4d38", "Posture score", 100);
@@ -1009,6 +1009,32 @@
       if (!dropped || !newer || blinkWatch.holding) return;
       blinkWatch.marks.push(implied);
       if (blinkWatch.marks.length > 180) blinkWatch.marks = blinkWatch.marks.slice(-180);
+    }
+
+    function blinkChartGaps(gaps) {
+      const out = gaps.slice();
+      const finite = [];
+      for (let i = 0; i < out.length; i += 1) {
+        if (out[i] != null && !Number.isNaN(Number(out[i]))) finite.push(i);
+      }
+      if (!finite.length) return gaps;
+      const first = Number(out[finite[0]]);
+      if (finite.length === 1) {
+        if (first > 30) out[finite[0]] = 0;
+        return out;
+      }
+      if (first <= 30) return out;
+      let run = 1;
+      let floor = first;
+      for (let k = 1; k < finite.length; k += 1) {
+        const gap = Number(out[finite[k]]);
+        if (gap + 5 < floor) break;
+        if (gap < floor) floor = gap;
+        run += 1;
+      }
+      if (run >= finite.length) return out;
+      for (let k = 0; k < run; k += 1) out[finite[k]] = 0;
+      return out;
     }
 
     function shownGapAt(saved, at) {

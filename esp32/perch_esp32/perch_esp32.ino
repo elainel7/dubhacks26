@@ -602,6 +602,7 @@ void postEvent(bool face, int posture, const char* head, unsigned gapTenths, int
 }
 
 uint32_t blinkGapMs() {
+  if (!alerts.seenBlink) return 0;
   if (alerts.eyesShut) return alerts.heldGapMs;
   return millis() - alerts.lastBlinkAt;
 }

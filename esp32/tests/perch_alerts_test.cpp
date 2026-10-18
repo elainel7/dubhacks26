@@ -26,13 +26,15 @@ int main() {
   state = perch_initial(0);
   PerchStep closed = perch_apply(state, PerchReading{true, 0, 80, false, true}, 4000);
   if (closed.buzz != kBuzzNone || !closed.state.eyesShut || closed.state.blinksPerMinute != 1) return 2;
-  if (closed.state.lastBlinkAt != 0 || closed.state.heldGapMs != 4000) return 2;
+  if (closed.state.lastBlinkAt != 0 || closed.state.heldGapMs != 0 || !closed.state.seenBlink) return 2;
   PerchStep held = perch_apply(closed.state, PerchReading{true, 0, 80, false, true}, 9000);
-  if (held.buzz != kBuzzNone || held.state.blinksPerMinute != 1 || held.state.heldGapMs != 4000) return 3;
+  if (held.buzz != kBuzzNone || held.state.blinksPerMinute != 1 || held.state.heldGapMs != 0) return 3;
   PerchStep during = perch_tick(held.state, 12000);
   if (during.buzz != kBuzzNone) return 4;
   PerchStep opened = perch_apply(during.state, PerchReading{true, 0, 80, false, false}, 13000);
   if (opened.state.eyesShut || opened.state.lastBlinkAt != 13000 || opened.state.blinksPerMinute != 1) return 5;
+  PerchStep again = perch_apply(opened.state, PerchReading{true, 0, 80, false, true}, 18000);
+  if (!again.state.eyesShut || again.state.heldGapMs != 5000) return 9;
   PerchStep heldShut = perch_apply(perch_initial(0), PerchReading{true, 0, 80, false, true, false}, 4000);
   if (perch_tick(heldShut.state, 10000).buzz != kBuzzNone) return 6;
   PerchStep laptop = perch_note_blink(heldShut.state, 7000);

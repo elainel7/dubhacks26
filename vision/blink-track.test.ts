@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BLINK_REFRACTORY_MS,
+  blinkChartGaps,
   blinkGapSeconds,
   initialBlinkTrack,
   initialBlinkWatch,
@@ -130,6 +131,14 @@ test("a slouch asks for another honk every fifteen seconds", () => {
   const fixed = postureHonkDue(1_000, 40_000, false, 21_000);
   assert.equal(fixed.badSince, null);
   assert.equal(fixed.ask, false);
+});
+
+test("the opening board gap is drawn as 0 so later blinks can move", () => {
+  assert.deepEqual(blinkChartGaps([135.2, 135.2, 1.3, 0.5, 1.1]), [0, 0, 1.3, 0.5, 1.1]);
+  assert.deepEqual(blinkChartGaps([1.2, 4.8, 0.3]), [1.2, 4.8, 0.3]);
+  assert.deepEqual(blinkChartGaps([135]), [0]);
+  assert.deepEqual(blinkChartGaps([2, 40, 3]), [2, 40, 3]);
+  assert.deepEqual(blinkChartGaps([135, 40, 1, 2]), [0, 40, 1, 2]);
 });
 
 test("a chart point uses the blink that happened before it", () => {

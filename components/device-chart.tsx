@@ -5,7 +5,7 @@ import { FootageToggle } from "@/components/footage-toggle";
 import { getFootageServerSnapshot, getFootageSnapshot, subscribeFootage } from "@/components/footage-session";
 import { Leaderboard } from "@/components/leaderboard-list";
 import { PointsPanel } from "@/components/points-panel";
-import { shownGapAt } from "@/vision/blink-track";
+import { blinkChartGaps, shownGapAt } from "@/vision/blink-track";
 import { rememberDevice } from "@/components/site-nav";
 
 type LiveEvent = {
@@ -224,8 +224,10 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
       ? blink.rate
       : savedBlink?.blinks_per_minute;
   const blinkMarks = blinkLive?.marks ?? [];
-  const blinkGaps = (events ?? []).map((event) =>
-    shownGapAt(blinkMarks, typeof event.blink_gap === "number" ? event.blink_gap : null, new Date(event.time).getTime()),
+  const blinkGaps = blinkChartGaps(
+    (events ?? []).map((event) =>
+      shownGapAt(blinkMarks, typeof event.blink_gap === "number" ? event.blink_gap : null, new Date(event.time).getTime()),
+    ),
   );
   const hasBlinks = blinkGaps.some((gap) => gap != null);
   const blinkMax = hasBlinks ? Math.max(10, ...blinkGaps.filter((gap): gap is number => gap != null)) : 10;

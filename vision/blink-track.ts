@@ -143,6 +143,39 @@ export function shownGap(watch: BlinkWatch, saved: number | null | undefined, no
   return Number(saved);
 }
 
+/**
+ * The board clock starts at power-on, so the first saved gaps can be a
+ * couple of minutes before the first real blink. That opening run is drawn
+ * as 0. A stare that shows up after the clock has already dropped stays.
+ */
+export function blinkChartGaps(gaps: Array<number | null>) {
+  const out = gaps.slice();
+  const finite: number[] = [];
+  for (let i = 0; i < out.length; i += 1) {
+    const gap = out[i];
+    if (gap != null && Number.isFinite(gap)) finite.push(i);
+  }
+  if (finite.length === 0) return gaps;
+  const first = out[finite[0]] as number;
+  if (finite.length === 1) {
+    if (first > 30) out[finite[0]] = 0;
+    return out;
+  }
+  if (first <= 30) return out;
+
+  let run = 1;
+  let floor = first;
+  for (let k = 1; k < finite.length; k += 1) {
+    const gap = out[finite[k]] as number;
+    if (gap + 5 < floor) break;
+    if (gap < floor) floor = gap;
+    run += 1;
+  }
+  if (run >= finite.length) return out;
+  for (let k = 0; k < run; k += 1) out[finite[k]] = 0;
+  return out;
+}
+
 /** One chart point. A later blink cannot rewrite an earlier score. */
 export function shownGapAt(marks: number[], saved: number | null | undefined, at: number) {
   const board = saved == null || Number.isNaN(Number(saved)) ? null : Number(saved);

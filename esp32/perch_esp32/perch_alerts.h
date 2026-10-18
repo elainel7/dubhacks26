@@ -21,6 +21,8 @@ struct PerchState {
   uint32_t lastBlinkAt;
   uint32_t heldGapMs;
   bool eyesShut;
+  /** False until a blink is seen. Time since power-on is not a stare. */
+  bool seenBlink;
   bool headForward;
   uint32_t blinkAt[32];
   int blinkCount;

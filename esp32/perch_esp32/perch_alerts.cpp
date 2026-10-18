@@ -103,6 +103,7 @@ PerchStep perch_note_blink(PerchState state, uint32_t now) {
   if (state.phase == kPhaseBreak) return PerchStep{state, kBuzzNone, ""};
   push_blink(&state, now);
   state.phase = kPhaseLive;
+  state.seenBlink = true;
   state.lastBlinkAt = now;
   state.eyesShut = false;
   state.heldGapMs = 0;
@@ -127,7 +128,8 @@ PerchStep perch_apply(PerchState state, PerchReading reading, uint32_t now) {
       int n = reading.blinkCount > 0 ? reading.blinkCount : 1;
       if (n > 4) n = 4;
       for (int i = 0; i < n; i++) push_blink(&due.state, now);
-      due.state.heldGapMs = now - due.state.lastBlinkAt;
+      due.state.heldGapMs = due.state.seenBlink ? now - due.state.lastBlinkAt : 0;
+      due.state.seenBlink = true;
       due.state.eyesShut = true;
     } else if (reading.blinkCount > 0) {
       int n = reading.blinkCount > 4 ? 4 : reading.blinkCount;
@@ -140,6 +142,7 @@ PerchStep perch_apply(PerchState state, PerchReading reading, uint32_t now) {
     }
     due.state.eyesShut = false;
     due.state.heldGapMs = 0;
+    due.state.seenBlink = true;
     due.state.lastBlinkAt = now;
   }
   due.state.postureScore = reading.postureScore;
