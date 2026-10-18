@@ -85,6 +85,13 @@ function grab(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
   return gray;
 }
 
+function boardErrorText(text: string) {
+  if (text === "wifi") {
+    return "The ESP32 is not on Wi-Fi. Check the network name in secrets.h. An open network needs an empty password, and the network has to be 2.4 GHz.";
+  }
+  return text;
+}
+
 type SerialPort = Awaited<ReturnType<Navigator["serial"]["requestPort"]>>;
 
 let rememberedPort: SerialPort | null = null;
@@ -147,7 +154,7 @@ export async function startFootage() {
         rememberDevice(id);
         emit({ ...state, deviceId: id });
       } else if (line.kind === "error") {
-        emit({ ...state, error: line.text });
+        emit({ ...state, error: boardErrorText(line.text) });
       }
     });
     emit({ ...state, collecting: true, starting: false, error: null });

@@ -322,6 +322,17 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(summary.json()["most_common_bad_label"], "slouching")
         self.assertEqual(summary_conn.queries[0][1][0], long_id)
 
+    def test_live_reads_recent_scores(self):
+        when = datetime(2026, 10, 18, 1, 0, tzinfo=timezone.utc)
+        conn = FakeConn([[{"time": when, "label": "slouching", "confidence": 0.42}]])
+        self.use_conn(conn)
+        response = self.client.get("/users/lamp-1/live")
+        self.assertEqual(response.status_code, 200)
+        event = response.json()["events"][0]
+        self.assertEqual(event["posture"], 42)
+        self.assertEqual(event["label"], "slouching")
+        self.assertIn("posture_events", conn.queries[0][0])
+
     def test_hours_out_of_range(self):
         conn = FakeConn([])
         self.use_conn(conn)
@@ -366,8 +377,8 @@ class ApiTests(unittest.TestCase):
         self.assertLess(html.index("API_BASE"), html.index("<body>"))
         self.assertIn('value="user_1"', html)
         self.assertIn('value="user_2"', html)
-        self.assertIn("/timeline?hours=", html)
-        self.assertIn("/summary?hours=", html)
+        self.assertIn("/live", html)
+        self.assertNotIn('id="hours"', html)
         self.assertIn("percent_good", html)
         self.assertIn("most_common_bad_label", html)
         self.assertIn("good_samples", html)

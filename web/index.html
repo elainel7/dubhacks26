@@ -267,13 +267,6 @@
           <option value="user_2">user_2</option>
         </select>
       </label>
-      <label for="hours">Hours
-        <select id="hours">
-          <option value="1">1 hour</option>
-          <option value="6" selected>6 hours</option>
-          <option value="24">24 hours</option>
-        </select>
-      </label>
       <button id="refresh" type="button">Refresh</button>
       <button id="footage" type="button" aria-pressed="false">Not collecting footage</button>
       <p id="footage-error" hidden></p>
@@ -294,18 +287,18 @@
     </section>
     <section class="chart-panel" aria-labelledby="chart-title">
       <div class="chart-heading">
-        <h2 id="chart-title">Good and bad posture</h2>
-        <p>Samples each minute. The solid line is good posture. The dashed line is bad posture.</p>
+        <h2 id="chart-title">Posture</h2>
+        <p>Score from 1 to 100 for the last 10 minutes. The page checks Tiger Data every second. 60 is poor posture.</p>
       </div>
       <div class="chart-frame" id="chart-frame">
-        <canvas id="chart" aria-label="Good and bad posture samples over time"></canvas>
+        <canvas id="chart" aria-label="Posture score from 1 to 100"></canvas>
         <p id="loading-chart" class="chart-message" role="status">
           <strong>Loading posture</strong>
           <span>Fetching minutes for this device id.</span>
         </p>
         <p id="empty-chart" class="chart-message">
           <strong>No readings yet</strong>
-          <span>No posture for this device id in the selected window.</span>
+          <span>No score for this device id in the last 10 minutes.</span>
         </p>
       </div>
       <p id="status" role="status"></p>
@@ -315,7 +308,12 @@
   <script>
     const apiBase = API_BASE.replace(/\/$/, "");
     const deviceSelect = document.querySelector("#device-id");
-    const hoursSelect = document.querySelector("#hours");
+    function boardError(text) {
+      if (text === "wifi") {
+        return "The ESP32 is not on Wi-Fi. Check the network name in secrets.h. An open network needs an empty password, and the network has to be 2.4 GHz.";
+      }
+      return text;
+    }
     const statusEl = document.querySelector("#status");
     const chartFrame = document.querySelector("#chart-frame");
     const chartCanvas = document.querySelector("#chart");
@@ -336,7 +334,7 @@
       if (Number(hours) > 12) {
         return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric" });
       }
-      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
     }
 
     function setChartMode(mode) {
@@ -372,43 +370,63 @@
       document.querySelector("#samples").textContent = "—";
     }
 
-    function renderChart(timeline) {
-      if (chart) {
-        chart.destroy();
-        chart = null;
-      }
-      if (typeof Chart === "undefined") {
-        return false;
-      }
-      if (!timeline.points.length) {
+    function summaryFromEvents(events) {
+      let good = 0;
+      const problems = {};
+      events.forEach((event) => {
+        if (event.label === "good") good += 1;
+        else problems[event.label] = (problems[event.label] || 0) + 1;
+      });
+      let problem = null;
+      let problemCount = 0;
+      Object.keys(problems).forEach((label) => {
+        if (problems[label] > problemCount) {
+          problem = label;
+          problemCount = problems[label];
+        }
+      });
+      const samples = events.length;
+      return {
+        percent_good: samples ? Math.round((1000 * good) / samples) / 10 : null,
+        most_common_bad_label: problem,
+        good_samples: good,
+        bad_samples: samples - good,
+      };
+    }
+
+    function renderChart(events) {
+      if (typeof Chart === "undefined") return false;
+      if (!events.length) {
+        if (chart) {
+          chart.destroy();
+          chart = null;
+        }
         setChartMode("empty");
         return true;
       }
       setChartMode("ready");
-      const hours = timeline.hours;
-      const manyPoints = timeline.points.length > 80;
+      const labels = events.map((event) => formatBucket(event.time, 1));
+      const scores = events.map((event) => event.posture);
+      const manyPoints = events.length > 80;
+      if (chart) {
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = scores;
+        chart.data.datasets[0].pointRadius = manyPoints ? 0 : 3;
+        chart.update("none");
+        return true;
+      }
       chart = new Chart(chartCanvas, {
         type: "line",
         data: {
-          labels: timeline.points.map((point) => formatBucket(point.bucket, hours)),
+          labels,
           datasets: [
             {
-              label: "Good posture",
-              data: timeline.points.map((point) => point.good_samples),
-              borderColor: "#14663f",
-              backgroundColor: "#14663f",
-              tension: 0.25,
-              pointRadius: manyPoints ? 0 : 2,
-              borderWidth: 2.5,
-            },
-            {
-              label: "Bad posture",
-              data: timeline.points.map((point) => point.bad_samples),
-              borderColor: "#9c341f",
-              backgroundColor: "#9c341f",
-              borderDash: [7, 5],
-              tension: 0.25,
-              pointRadius: manyPoints ? 0 : 2,
+              label: "Posture",
+              data: scores,
+              borderColor: "#1c4d38",
+              backgroundColor: "#1c4d38",
+              tension: 0.2,
+              pointRadius: manyPoints ? 0 : 3,
               borderWidth: 2.5,
             },
           ],
@@ -432,9 +450,10 @@
           scales: {
             y: {
               beginAtZero: true,
+              max: 100,
               title: {
                 display: true,
-                text: "Samples per minute",
+                text: "Posture score",
                 color: "#3f4a44",
                 font: { family: chartFont, size: 13, weight: "600" },
               },
@@ -457,7 +476,6 @@
       const quiet = Boolean(options && options.quiet);
       const id = ++requestId;
       const deviceId = deviceSelect.value;
-      const hours = hoursSelect.value;
       if (!quiet) {
         clearSummary();
         setChartMode("loading");
@@ -465,30 +483,23 @@
         statusEl.textContent = "Loading posture for this device id…";
       }
       try {
-        const [timelineRes, summaryRes] = await Promise.all([
-          fetch(apiBase + "/users/" + encodeURIComponent(deviceId) + "/timeline?hours=" + encodeURIComponent(hours)),
-          fetch(apiBase + "/users/" + encodeURIComponent(deviceId) + "/summary?hours=" + encodeURIComponent(hours)),
-        ]);
+        const liveRes = await fetch(apiBase + "/users/" + encodeURIComponent(deviceId) + "/live");
         if (id !== requestId) return;
-        if (!timelineRes.ok || !summaryRes.ok) {
-          throw new Error("API returned " + timelineRes.status + " / " + summaryRes.status);
-        }
-        const timeline = await timelineRes.json();
-        const summary = await summaryRes.json();
-        renderSummary(summary);
-        const chartOk = renderChart(timeline);
-        const minutes = timeline.points.length;
+        if (!liveRes.ok) throw new Error("API returned " + liveRes.status);
+        const live = await liveRes.json();
+        const events = Array.isArray(live.events) ? live.events : [];
+        renderSummary(summaryFromEvents(events));
+        const chartOk = renderChart(events);
         if (!chartOk) {
           setChartMode("empty");
           statusEl.className = "is-error";
           statusEl.textContent = "Chart library failed to load. Summary stats are still shown.";
           return;
         }
-        const minuteLabel = minutes === 1 ? " minute" : " minutes";
         statusEl.className = "";
-        statusEl.textContent = minutes
-          ? minutes + minuteLabel + " for device id " + deviceId + "."
-          : "No readings for device id " + deviceId + " in this window.";
+        statusEl.textContent = events.length
+          ? events.length + " scores in the last 10 minutes for " + deviceId + "."
+          : "No scores for " + deviceId + " in the last 10 minutes.";
       } catch (err) {
         if (id !== requestId) return;
         setChartMode("empty");
@@ -498,7 +509,6 @@
     }
 
     deviceSelect.addEventListener("change", () => load());
-    hoursSelect.addEventListener("change", () => load());
     document.querySelector("#refresh").addEventListener("click", () => load());
 
     const footageButton = document.querySelector("#footage");
@@ -577,7 +587,7 @@
       const text = line.trim();
       if (text === "ok" && okWaiter) okWaiter();
       else if (text.startsWith("device ")) noteDevice(text.slice(7));
-      else if (text.startsWith("error ")) setFootage(footageCollecting, text.slice(6).trim());
+      else if (text.startsWith("error ")) setFootage(footageCollecting, boardError(text.slice(6).trim()));
     }
 
     async function readBoard() {
@@ -716,9 +726,7 @@
       if (footageCollecting) stopFootage();
       else startFootage();
     });
-    window.setInterval(() => {
-      if (footageCollecting) load({ quiet: true });
-    }, 20000);
+    window.setInterval(() => load({ quiet: true }), 1000);
     load();
   </script>
 </body>

@@ -60,6 +60,15 @@ WHERE user_id = %s
   AND bucket >= now() - (%s * INTERVAL '1 hour')
 """
 
+LIVE_SQL = """
+SELECT time, label, confidence
+FROM posture_events
+WHERE user_id = %s
+  AND time >= now() - INTERVAL '10 minutes'
+ORDER BY time ASC
+LIMIT 600
+"""
+
 BAD_LABEL_SQL = """
 SELECT label
 FROM posture_events
@@ -136,6 +145,18 @@ class PostureEventOut(BaseModel):
     confidence: float | None
 
 
+class LiveEvent(BaseModel):
+    time: datetime
+    label: str
+    confidence: float | None
+    posture: int | None
+
+
+class LiveResponse(BaseModel):
+    user_id: str
+    events: list[LiveEvent]
+
+
 def _as_int(value) -> int:
     return int(value)
 
@@ -196,6 +217,25 @@ def insert_event(conn, event: PostureEventIn) -> dict:
     }
 
 
+def fetch_live(conn, user_id: str) -> list[dict]:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(LIVE_SQL, (user_id,))
+        rows = cur.fetchall()
+    events = []
+    for row in rows:
+        confidence = _as_float(row["confidence"])
+        posture = None if confidence is None else max(0, min(100, round(confidence * 100)))
+        events.append(
+            {
+                "time": row["time"],
+                "label": row["label"],
+                "confidence": confidence,
+                "posture": posture,
+            }
+        )
+    return events
+
+
 def _clean_user_id(user_id: str) -> str:
     user_id = user_id.strip()
     if not user_id:
@@ -225,6 +265,12 @@ def summary(
 ):
     user_id = _clean_user_id(user_id)
     return {"user_id": user_id, "hours": hours, **fetch_summary(conn, user_id, hours)}
+
+
+@app.get("/users/{user_id}/live", response_model=LiveResponse)
+def live(user_id: str, conn=Depends(get_conn)):
+    user_id = _clean_user_id(user_id)
+    return {"user_id": user_id, "events": fetch_live(conn, user_id)}
 
 
 @app.post("/events", response_model=PostureEventOut, status_code=201)
