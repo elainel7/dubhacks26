@@ -152,7 +152,7 @@ async function pump() {
   while (!stopRequested && link) {
     sample();
     const span = ring.length >= 2 ? ring[ring.length - 1].t - ring[0].t : 0;
-    if (ring.length < 4 || span < 500) {
+    if (ring.length < 2 || span < 400) {
       await sleep(40);
       continue;
     }

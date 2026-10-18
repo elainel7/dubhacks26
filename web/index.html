@@ -171,6 +171,16 @@
     #samples .good { color: var(--good); }
     #samples .bad { color: var(--bad); }
     .chart-heading p { margin: 6px 0 0; color: var(--muted); }
+    .reminder {
+      margin: 16px 0 0;
+      font-family: Fraunces, Georgia, serif;
+      font-size: 2.4rem;
+      font-weight: 560;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+    }
+    .reminder.is-good { color: var(--good); }
+    .reminder.is-bad { color: var(--bad); }
     .chart-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -440,7 +450,8 @@
     <section class="chart-panel" aria-labelledby="chart-title">
       <div class="chart-heading">
         <h2 id="chart-title">Live scores</h2>
-        <p>The last 10 minutes, checked every second. Posture runs from 1 to 100, and 60 is poor. Blinks are seconds since the last blink, and 5 seconds is the fast beep.</p>
+        <p>Two graphs for the last 10 minutes. A score is two small frames, so it can finish inside the five-second blink window.</p>
+        <p id="reminder" class="reminder" role="status">Waiting for a score.</p>
       </div>
       <div class="chart-row">
         <div>
@@ -806,8 +817,10 @@
       const quiet = Boolean(options && options.quiet);
       const id = ++requestId;
       const deviceId = deviceSelect.value;
-      loadPoints(deviceId);
-      loadBoard();
+      if (!quiet || requestId % 15 === 1) {
+        loadPoints(deviceId);
+        loadBoard();
+      }
       if (!quiet) {
         clearSummary();
         setChartMode("loading");
@@ -822,6 +835,13 @@
         const events = Array.isArray(live.events) ? live.events : [];
         renderSummary(summaryFromEvents(events));
         renderBlinks(events);
+        const last = events.length ? events[events.length - 1] : null;
+        const notes = [];
+        if (last && last.blink_gap != null && Number(last.blink_gap) >= 5) notes.push("Blink");
+        if (last && ((last.posture != null && last.posture <= 60) || last.label === "slouching" || last.label === "leaning_forward")) {
+          notes.push("Sit up taller");
+        }
+        if (last) showReminder(notes);
         const chartOk = renderChart(events);
         if (!chartOk) {
           setChartMode("empty");
@@ -847,8 +867,8 @@
     const footageButton = document.querySelector("#footage");
     const footageStatus = document.querySelector("#footage-status");
     const footageError = document.querySelector("#footage-error");
-    const FRAME_W = 160;
-    const FRAME_H = 120;
+    const FRAME_W = 96;
+    const FRAME_H = 72;
     let footagePort = null;
     let footageWriter = null;
     let footageReader = null;
@@ -951,10 +971,16 @@
       else if (text.startsWith("score ")) {
         const gap = text.match(/(?:^|\s)gap=([^\s]+)/);
         const rate = text.match(/(?:^|\s)rate=([^\s]+)/);
+        const posture = text.match(/(?:^|\s)posture=([^\s]+)/);
+        const head = text.match(/(?:^|\s)head=([^\s]+)/);
         const gapEl = document.querySelector("#blink-gap");
         const rateEl = document.querySelector("#blink-rate");
         if (gapEl) gapEl.textContent = gap ? gap[1] + " s" : "—";
         if (rateEl) rateEl.textContent = rate ? rate[1] : "—";
+        const notes = [];
+        if (gap && Number(gap[1]) >= 5) notes.push("Blink");
+        if ((posture && Number(posture[1]) <= 60) || (head && head[1] === "forward")) notes.push("Sit up taller");
+        showReminder(notes);
       }
       else if (text.startsWith("note ")) showBoard(text.slice(5).trim());
       else if (
@@ -1057,28 +1083,32 @@
     }
 
     function pickSheetFrames(ring) {
-      if (ring.length <= 4) return ring.slice();
-      const indexes = new Set([0, ring.length - 1]);
-      let darkest = 1;
-      let dark = eyeEnergy(ring[1].gray);
-      let jump = 1;
-      let jumpAmount = -1;
-      for (let i = 1; i < ring.length - 1; i += 1) {
+      if (ring.length <= 2) return ring.slice();
+      let darkest = 0;
+      let dark = eyeEnergy(ring[0].gray);
+      for (let i = 1; i < ring.length; i += 1) {
         const energy = eyeEnergy(ring[i].gray);
         if (energy < dark) {
           dark = energy;
           darkest = i;
         }
-        const delta = Math.abs(energy - eyeEnergy(ring[i - 1].gray));
-        if (delta > jumpAmount) {
-          jumpAmount = delta;
-          jump = i;
-        }
       }
-      indexes.add(darkest);
-      indexes.add(jump);
-      for (let i = 1; i < ring.length - 1 && indexes.size < 4; i += 1) indexes.add(i);
-      return Array.from(indexes).sort(function (a, b) { return a - b; }).map(function (index) { return ring[index]; });
+      const last = ring.length - 1;
+      const earlier = darkest === last ? Math.max(0, last - 1) : Math.min(darkest, last);
+      const later = darkest === last ? last : Math.max(darkest, last);
+      return [ring[earlier], ring[later]];
+    }
+
+    function showReminder(notes) {
+      const el = document.querySelector("#reminder");
+      if (!el) return;
+      if (!notes.length) {
+        el.textContent = "Good";
+        el.className = "reminder is-good";
+        return;
+      }
+      el.textContent = notes.join(" · ");
+      el.className = "reminder is-bad";
     }
 
     function grabGray(video, canvas) {
@@ -1207,7 +1237,7 @@
           await pending;
           if (countSheetOk) sheetCount += 1;
           else countSheetOk = true;
-          if (sheetCount < 4) return;
+          if (sheetCount < 2) return;
           sheetCount = 0;
           const scoringStarted = performance.now();
           while (!idleLatched) {
@@ -1223,7 +1253,7 @@
         while (!footageStop) {
           rememberFrame();
           const span = ring.length >= 2 ? ring[ring.length - 1].t - ring[0].t : 0;
-          if (ring.length < 4 || span < 500) {
+          if (ring.length < 2 || span < 400) {
             await new Promise((resolve) => window.setTimeout(resolve, 40));
             continue;
           }

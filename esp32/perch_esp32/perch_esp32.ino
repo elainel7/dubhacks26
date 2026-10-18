@@ -1,6 +1,6 @@
 // Perch on an ESP32.
 //
-// The laptop is only a camera. Chrome sends 160x120 grayscale frames over USB.
+// The laptop is only a camera. Chrome sends 96x72 grayscale frames over USB.
 // This board stores four of them, builds one contact sheet, asks Perceptron
 // Mk1.5, buzzes, and posts the posture number to Tiger Data for PERCH_DEVICE_ID.
 //
@@ -41,15 +41,15 @@
 #error "Copy secrets.example.h to secrets.h and fill in Wi-Fi, the device id, and the Perceptron key."
 #endif
 
-constexpr int kFrameW = 160;
-constexpr int kFrameH = 120;
+constexpr int kFrameW = 96;
+constexpr int kFrameH = 72;
 constexpr int kPixels = kFrameW * kFrameH;
-constexpr int kPanels = 4;
-constexpr int kSheetW = 808;
-constexpr int kSheetH = 120;
-constexpr int kPostureX = 648;
+constexpr int kPanels = 2;
+constexpr int kSheetW = 296;
+constexpr int kSheetH = 72;
+constexpr int kPostureX = 200;
 constexpr size_t kPayloadLen = 4 + kPixels;
-constexpr size_t kJpegCap = 80 * 1024;
+constexpr size_t kJpegCap = 32 * 1024;
 constexpr int kBuzzerPin = 4;
 constexpr int kGreenPin = 5;
 constexpr int kYellowPin = 6;
@@ -63,34 +63,15 @@ constexpr uint8_t kMagic0 = 0xA5;
 constexpr uint8_t kMagic1 = 0x5A;
 
 static const char kPrompt[] =
-    "This grayscale image is one contact sheet from a front-facing laptop camera. The face is close. "
-    "Four panels sit in a row on a near-black background. Read them left to right. They are samples across a couple of seconds, not consecutive video frames. "
-    "The right-hand panel has a bright white border and is POSTURE. Score only that panel. "
-    "blink_count is how many times the eyelids close in the left panels, read left to right. "
-    "A blink is the change from pupils visible to lids covering the pupils. "
-    "Count that close even when the eyes stay shut through the end of the sheet. "
-    "If the eyes are shut in every left panel, blink_count is 0 and eyes_closed is true. "
-    "A held close is still a blink. It is not one blink per panel, and it does not end until the eyes open. "
-    "eyes_closed is true when the lids cover the pupils in the last left panel, and false when the pupils are visible there. "
-    "Eyes that are already shut in the first panel and then open are not an extra blink. "
-    "Several shut panels after one close are one blink, not one blink per panel. "
-    "The person may wear glasses. A bright reflection is not an open eye. "
-    "Looking down with the pupils still visible is not a blink. Lids covering the pupils is a blink even if the chin drops. "
-    "One panel with the eyes shut is a blink even when the panels beside it are open. "
-    "The left panels are only for blinks. "
-    "posture_score is an integer from 1 to 100. 1 is the worst posture and 100 is the best. Use the whole range. "
-    "90 to 100 means the ear is over the shoulder, the chin is back, and the chest is open. "
-    "70 to 85 is upright with a small forward drift of the head. "
-    "50 to 65 means the head is in front of the shoulders or the upper back is rounded. "
-    "25 to 45 is a real slouch, with the face much closer to the camera than the chest. "
-    "1 to 20 is collapsed toward the desk. "
-    "A slouch and sitting up must differ by at least 25 points. "
-    "If no face is visible, face_visible is false, blink_count is 0, eyes_closed is false, posture_score is 50, and head and shoulders are unknown. "
-    "head is upright, forward, or unknown. shoulders is level, tilted, or unknown. "
-    "Do not identify the person.";
+    "Front-facing laptop camera. Dark contact sheet. Two left panels are blinks, left to right, a couple of seconds apart. "
+    "A blink is lids covering the pupils. One shut panel counts, even if the eyes never open again in this sheet. "
+    "eyes_closed is true when the second left panel is shut. If both are shut, blink_count is 0 and eyes_closed is true. "
+    "The right panel with the white border is POSTURE. posture_score is 1 to 100: 100 upright, 60 or below is a slouch. "
+    "head is upright, forward, or unknown. "
+    "If no face, face_visible is false, blink_count is 0, eyes_closed is false, posture_score is 50, head is unknown.";
 
 static const char kPrefix[] =
-    "{\"model\":\"perceptron-mk1.5\",\"max_completion_tokens\":600,"
+    "{\"model\":\"perceptron-mk1.5\",\"max_completion_tokens\":160,"
     "\"reasoning_effort\":\"none\",\"vision_config\":{\"enable_thinking\":false},"
     "\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"desk_state\",\"strict\":true,\"schema\":{"
     "\"type\":\"object\",\"additionalProperties\":false,\"properties\":{"
@@ -98,9 +79,8 @@ static const char kPrefix[] =
     "\"blink_count\":{\"type\":\"integer\"},"
     "\"eyes_closed\":{\"type\":\"boolean\"},"
     "\"posture_score\":{\"type\":\"integer\"},"
-    "\"head\":{\"type\":\"string\",\"enum\":[\"upright\",\"forward\",\"unknown\"]},"
-    "\"shoulders\":{\"type\":\"string\",\"enum\":[\"level\",\"tilted\",\"unknown\"]}"
-    "},\"required\":[\"face_visible\",\"blink_count\",\"eyes_closed\",\"posture_score\",\"head\",\"shoulders\"]}}},"
+    "\"head\":{\"type\":\"string\",\"enum\":[\"upright\",\"forward\",\"unknown\"]}"
+    "},\"required\":[\"face_visible\",\"blink_count\",\"eyes_closed\",\"posture_score\",\"head\"]}}},"
     "\"messages\":[{\"role\":\"user\",\"content\":["
     "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,";
 
@@ -633,8 +613,8 @@ void scoreSheet() {
     return;
   }
   composeSheet();
-  size_t jpegSize = jpeg_gray_encode(sheet, kSheetW, kSheetH, 55, jpeg, kJpegCap);
-  if (jpegSize == 0) jpegSize = jpeg_gray_encode(sheet, kSheetW, kSheetH, 30, jpeg, kJpegCap);
+  size_t jpegSize = jpeg_gray_encode(sheet, kSheetW, kSheetH, 40, jpeg, kJpegCap);
+  if (jpegSize == 0) jpegSize = jpeg_gray_encode(sheet, kSheetW, kSheetH, 25, jpeg, kJpegCap);
   free(sheet);
   sheet = nullptr;
   if (jpegSize == 0) {
@@ -863,7 +843,7 @@ void setup() {
   digitalWrite(kBuzzerPin, LOW);
   setLeds(false, false, false);
   hardwareHello();
-  Serial.setRxBufferSize(32768);
+  Serial.setRxBufferSize(16384);
   Serial.begin(921600);
   Serial.setTxTimeoutMs(100);
   delay(200);

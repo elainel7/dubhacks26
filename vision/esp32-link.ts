@@ -1,5 +1,5 @@
-export const FRAME_W = 160;
-export const FRAME_H = 120;
+export const FRAME_W = 96;
+export const FRAME_H = 72;
 export const FRAME_PIXELS = FRAME_W * FRAME_H;
 export const FRAME_TYPE = 1;
 
@@ -95,36 +95,28 @@ function eyeEnergy(gray: Uint8Array) {
   return sum;
 }
 
-/** Four samples across a ring. The darkest eye band stays, so a blink is not dropped. */
+/** Two samples: the darkest eyes, then the newest frame for posture. */
 export function pickSheetFrames<T extends { gray: Uint8Array }>(ring: T[]): T[] {
-  if (ring.length <= 4) return ring.slice();
-  const indexes = new Set<number>([0, ring.length - 1]);
-  let darkest = 1;
-  let dark = eyeEnergy(ring[1].gray);
-  let jump = 1;
-  let jumpAmount = -1;
-  for (let i = 1; i < ring.length - 1; i++) {
+  if (ring.length <= 2) return ring.slice();
+  let darkest = 0;
+  let dark = eyeEnergy(ring[0].gray);
+  for (let i = 1; i < ring.length; i++) {
     const energy = eyeEnergy(ring[i].gray);
     if (energy < dark) {
       dark = energy;
       darkest = i;
     }
-    const delta = Math.abs(energy - eyeEnergy(ring[i - 1].gray));
-    if (delta > jumpAmount) {
-      jumpAmount = delta;
-      jump = i;
-    }
   }
-  indexes.add(darkest);
-  indexes.add(jump);
-  for (let i = 1; i < ring.length - 1 && indexes.size < 4; i++) indexes.add(i);
-  return [...indexes].sort((a, b) => a - b).map((index) => ring[index]);
+  const last = ring.length - 1;
+  const earlier = darkest === last ? Math.max(0, last - 1) : Math.min(darkest, last);
+  const later = darkest === last ? last : Math.max(darkest, last);
+  return [ring[earlier], ring[later]];
 }
 
 /** One grayscale frame. Timestamp is the low 32 bits, little endian. */
 export function encodeFrame(timestampMs: number, gray: Uint8Array) {
   if (gray.length !== FRAME_PIXELS) {
-    throw new Error("A frame is 160 by 120 grayscale bytes.");
+    throw new Error("A frame is 96 by 72 grayscale bytes.");
   }
   const payloadLen = 4 + gray.length;
   const packet = new Uint8Array(2 + 6 + payloadLen + 2);
@@ -326,7 +318,7 @@ export async function connectEsp32(
       }
       if (countSheetOk) sheet += 1;
       else countSheetOk = true;
-      if (sheet < 4) return;
+      if (sheet < 2) return;
       sheet = 0;
       const scoringStarted = Date.now();
       while (!idleLatched) {

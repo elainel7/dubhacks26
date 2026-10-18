@@ -218,6 +218,14 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
   const hasBlinks = blinkGaps.some((gap) => gap != null);
   const blinkMax = hasBlinks ? Math.max(10, ...blinkGaps.filter((gap): gap is number => gap != null)) : 10;
   const blinkTop = Math.ceil(blinkMax);
+  const latest = events?.at(-1);
+  const remindBlink = typeof blinkGap === "number" && blinkGap >= 5;
+  const remindPosture =
+    latest != null &&
+    ((latest.posture != null && latest.posture <= 60) || latest.label === "slouching" || latest.label === "leaning_forward");
+  const reminder = !events?.length
+    ? "Waiting for a score."
+    : [remindBlink ? "Blink" : null, remindPosture ? "Sit up taller" : null].filter(Boolean).join(" · ") || "Good";
   const percent = summary?.percent === null || summary?.percent === undefined ? "—" : `${summary.percent}%`;
   const percentTone =
     summary?.percent === null || summary?.percent === undefined
@@ -233,7 +241,15 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
           <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Device id</p>
           <h1 className="mt-1 text-4xl break-all text-foreground sm:text-5xl">{deviceId}</h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            The last 10 minutes, checked every second. Posture and blinks are saved together after each score.
+            Two graphs for the last 10 minutes. Each score is two small frames so it can finish inside five seconds.
+          </p>
+          <p
+            className={`font-heading text-4xl tracking-tight ${
+              reminder === "Good" ? "text-good" : reminder === "Waiting for a score." ? "text-foreground" : "text-bad"
+            }`}
+            role="status"
+          >
+            {reminder}
           </p>
         </div>
         <FootageToggle />

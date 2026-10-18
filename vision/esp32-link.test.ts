@@ -41,10 +41,9 @@ test("the darkest eye sample is kept for the sheet", () => {
   }
   const ring = [frame(200), frame(200), frame(20), frame(200), frame(200), frame(180)];
   const picked = pickSheetFrames(ring);
-  assert.equal(picked.length, 4);
-  assert.equal(picked[0], ring[0]);
-  assert.equal(picked[picked.length - 1], ring[ring.length - 1]);
-  assert.ok(picked.includes(ring[2]));
+  assert.equal(picked.length, 2);
+  assert.equal(picked[0], ring[2]);
+  assert.equal(picked[1], ring[ring.length - 1]);
 });
 
 test("score, device, and error lines parse", () => {
