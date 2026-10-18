@@ -368,6 +368,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn('value="user_2"', html)
         self.assertIn("/timeline?hours=", html)
         self.assertIn("/summary?hours=", html)
+        self.assertIn("/points?hours=", html)
+        self.assertIn("/leaderboard?hours=", html)
         self.assertIn("percent_good", html)
         self.assertIn("most_common_bad_label", html)
         self.assertIn("good_samples", html)

@@ -568,6 +568,26 @@ curl -s -X POST "http://127.0.0.1:8000/events" \
   -d '{"time":"2026-10-17T20:00:00Z","user_id":"user_1","label":"good","confidence":0.95}'
 ```
 
+## Points
+
+Points are computed when you ask for them. They are not stored, and there is no new table. One read of `posture_per_minute` is enough. The rules live as named constants in `backend/api/points.py`.
+
+- An upright minute has at least 3 samples and at least 70% `good` samples. It is worth 10 base points. Every other minute is worth 0.
+- A flow streak is consecutive upright minutes. A non-upright minute breaks it, and so does a gap of more than 2 minutes with no considered minute. Minutes 1–4 pay ×1, minute 5 pays ×1.5, minute 15 pays ×2, and minute 30 pays ×3.
+- A quick fix is +15 once when an upright minute follows a non-upright minute within 3 minutes.
+- 60 upright minutes in one local day pays +100 once. Pass `tz` (default `America/Los_Angeles`) to choose the calendar.
+- A day streak is consecutive local days with at least 30 upright minutes. Day n of that streak adds n × 5% of that day's base points (10 per upright minute), capped at +50%. Today does not break the streak until the day is over.
+- After the multiplier and the quick fix, a minute is capped at 60 points. The daily goal and the day-streak percent sit outside that cap.
+- XP is the points in the requested window. Finishing level n takes `100 * n * (n + 1) / 2` cumulative points. Level 1 starts at 0. The titles run from Slouch Survivor through Perch Legend.
+- Badges (first upright minute, 10- and 30-minute flow, hour of power, comeback kid, three- and seven-day streaks, night owl, early bird) are derived from the same rows.
+
+```bash
+curl -s "http://127.0.0.1:8000/users/user_1/points?hours=168&tz=America/Los_Angeles"
+curl -s "http://127.0.0.1:8000/leaderboard?hours=168&limit=10"
+```
+
+`hours` defaults to 168 and cannot exceed 2160. The leaderboard returns rank, `display_name` (or the device id when `users.display_name` is missing), and points. The device page, the camera page, and the static dashboard all read these routes. The camera page polls about every 25 seconds because the minute rollup lags about a minute.
+
 CORS is open so a static site on another origin can call the API. There is no auth. A device id is a plain string such as `user_1` or `user_2`, sent on the wire as `user_id`. Do not rename the live paths `/users/{user_id}/timeline`, `/users/{user_id}/summary`, or `POST /events`, or the database columns.
 
 A new event lands in `posture_events` immediately. It shows up in `posture_per_minute` after the refresh policy runs (about a minute), or when `backend/scripts/seed.py` refreshes the aggregate.

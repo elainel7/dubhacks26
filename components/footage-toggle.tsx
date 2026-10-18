@@ -18,7 +18,7 @@ export function FootageToggle() {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!footage.deviceId) return;
+    if (!footage.deviceId || pathname === "/camera") return;
     const target = `/device/${encodeURIComponent(footage.deviceId)}`;
     if (pathname !== target) router.replace(target);
   }, [footage.deviceId, pathname, router]);
