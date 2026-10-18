@@ -273,13 +273,38 @@ test("frame selection keeps both ends and flags a long span", () => {
   assert.equal(tight.degraded, false);
 });
 
-test("a blink is the close, even when the eyes stay shut through the end of the sheet", () => {
+test("a held close stays a blink until the eyes open", () => {
   const prompt = contactSheetPrompt(4, 250);
-  assert.match(prompt, /still shut at the end of the sheet/);
-  assert.match(prompt, /Do not wait for the eyes to open again in this sheet/);
-  assert.match(prompt, /already shut in the first panel/);
-  assert.doesNotMatch(prompt, /any small panel, blink_count is at least 1/);
+  assert.match(prompt, /A held close is still a blink/);
+  assert.match(prompt, /does not end until the eyes open/);
+  assert.match(prompt, /eyes_closed is true/);
   assert.doesNotMatch(prompt, /fully close and open/);
+});
+
+test("closed eyes count as one blink and the stare clock waits for them to open", () => {
+  const start = initialAlertState(0);
+  const closed = applyReading(start, reading({ blinkCount: 0, eyesClosed: true }), 4_000);
+  assert.equal(closed.buzz, null);
+  assert.equal(closed.state.eyesShut, true);
+  assert.equal(closed.state.blinksPerMinute, 1);
+  assert.equal(closed.state.lastBlinkAt, 0);
+  assert.equal(closed.state.secondsSinceBlink, 4);
+
+  const still = applyReading(closed.state, reading({ blinkCount: 0, eyesClosed: true }), 9_000);
+  assert.equal(still.buzz, null);
+  assert.equal(still.state.blinksPerMinute, 1);
+  assert.equal(still.state.lastBlinkAt, 0);
+  assert.equal(still.state.secondsSinceBlink, 4);
+
+  const quiet = tick(still.state, 12_000);
+  assert.equal(quiet.buzz, null);
+  assert.equal(quiet.state.secondsSinceBlink, 4);
+
+  const opened = applyReading(quiet.state, reading({ blinkCount: 0, eyesClosed: false }), 13_000);
+  assert.equal(opened.state.eyesShut, false);
+  assert.equal(opened.state.lastBlinkAt, 13_000);
+  assert.equal(opened.state.secondsSinceBlink, 0);
+  assert.equal(opened.state.blinksPerMinute, 1);
 });
 
 test("desk JSON is clamped and rejected when a field is missing", () => {
@@ -289,6 +314,7 @@ test("desk JSON is clamped and rejected when a field is missing", () => {
   assert.deepEqual(parsed, {
     face_visible: true,
     blink_count: 4,
+    eyes_closed: false,
     posture_score: 1,
     head: "forward",
     shoulders: "tilted",
@@ -300,6 +326,7 @@ test("desk JSON is clamped and rejected when a field is missing", () => {
     {
       face_visible: true,
       blink_count: 0,
+      eyes_closed: false,
       posture_score: 80,
       head: "upright",
       shoulders: "level",

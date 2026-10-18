@@ -67,10 +67,11 @@ static const char kPrompt[] =
     "Four small panels sit in one row on the left and cover about a quarter of a second. "
     "blink_count is how many times the eyelids close in the small panels, read left to right. "
     "A blink is the change from pupils visible to lids covering the pupils. "
-    "Count that change even when the eyes are still shut at the end of the sheet. "
-    "Do not wait for the eyes to open again in this sheet, and do not return 0 for that reason. "
-    "Eyes that are already shut in the first panel and then open are the end of an earlier blink. Do not count that. "
-    "Eyes that stay shut in every small panel are not a new blink. "
+    "Count that close even when the eyes stay shut through the end of the sheet. "
+    "If the eyes are shut in every small panel, blink_count is 0 and eyes_closed is true. "
+    "A held close is still a blink. It is not one blink per panel, and it does not end until the eyes open. "
+    "eyes_closed is true when the lids cover the pupils in the last small panel, and false when the pupils are visible there. "
+    "Eyes that are already shut in the first panel and then open are not an extra blink. "
     "Several shut panels after one close are one blink, not one blink per panel. "
     "The person may wear glasses. A bright reflection is not an open eye. "
     "Looking down with the pupils still visible is not a blink. Lids covering the pupils is a blink even if the chin drops. "
@@ -83,7 +84,7 @@ static const char kPrompt[] =
     "25 to 45 is a real slouch, with the face much closer to the camera than the chest. "
     "1 to 20 is collapsed toward the desk. "
     "A slouch and sitting up must differ by at least 25 points. "
-    "If no face is visible, face_visible is false, blink_count is 0, posture_score is 50, and head and shoulders are unknown. "
+    "If no face is visible, face_visible is false, blink_count is 0, eyes_closed is false, posture_score is 50, and head and shoulders are unknown. "
     "head is upright, forward, or unknown. shoulders is level, tilted, or unknown. "
     "Do not identify the person.";
 
@@ -94,10 +95,11 @@ static const char kPrefix[] =
     "\"type\":\"object\",\"additionalProperties\":false,\"properties\":{"
     "\"face_visible\":{\"type\":\"boolean\"},"
     "\"blink_count\":{\"type\":\"integer\"},"
+    "\"eyes_closed\":{\"type\":\"boolean\"},"
     "\"posture_score\":{\"type\":\"integer\"},"
     "\"head\":{\"type\":\"string\",\"enum\":[\"upright\",\"forward\",\"unknown\"]},"
     "\"shoulders\":{\"type\":\"string\",\"enum\":[\"level\",\"tilted\",\"unknown\"]}"
-    "},\"required\":[\"face_visible\",\"blink_count\",\"posture_score\",\"head\",\"shoulders\"]}}},"
+    "},\"required\":[\"face_visible\",\"blink_count\",\"eyes_closed\",\"posture_score\",\"head\",\"shoulders\"]}}},"
     "\"messages\":[{\"role\":\"user\",\"content\":["
     "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,";
 
@@ -610,8 +612,13 @@ void postEvent(bool face, int posture, const char* head, unsigned gapTenths, int
   }
 }
 
+uint32_t blinkGapMs() {
+  if (alerts.eyesShut) return alerts.heldGapMs;
+  return millis() - alerts.lastBlinkAt;
+}
+
 void printScore(bool face, int blinks, int posture, const char* head, const char* shoulders) {
-  uint32_t gapMs = millis() - alerts.lastBlinkAt;
+  uint32_t gapMs = blinkGapMs();
   unsigned tenths = gapMs / 100;
   char line[180];
   snprintf(line, sizeof(line),
@@ -749,13 +756,13 @@ void scoreSheet() {
   const char* shoulders = score.shoulders;
 
   uint32_t span = stamps[kPanels - 1] - stamps[0];
-  PerchReading reading{face, blinks, posture, span > 4000u};
+  PerchReading reading{face, blinks, posture, span > 4000u, score.eyesClosed};
   PerchStep step = perch_apply(alerts, reading, millis());
   alerts = step.state;
   lastApplyMs = millis();
   printScore(face, blinks, posture, head, shoulders);
   paintLcd("Saving", "Scores");
-  uint32_t gapMs = millis() - alerts.lastBlinkAt;
+  uint32_t gapMs = blinkGapMs();
   unsigned gapTenths = gapMs / 100;
   postEvent(face, posture, head, gapTenths, alerts.blinksPerMinute);
   if (step.buzz != kBuzzNone) playBuzzNow(step.buzz);

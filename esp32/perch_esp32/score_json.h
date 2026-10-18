@@ -10,6 +10,7 @@
 struct DeskScoreRead {
   bool face;
   int blinks;
+  bool eyesClosed;
   int posture;
   char head[16];
   char shoulders[16];

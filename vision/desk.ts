@@ -7,6 +7,7 @@ export const SPEND_CAP_USD = 3;
 export type DeskScore = {
   face_visible: boolean;
   blink_count: number;
+  eyes_closed: boolean;
   posture_score: number;
   head: HeadState;
   shoulders: ShoulderState;
@@ -24,10 +25,11 @@ export function contactSheetPrompt(panelCount: number, durationMs: number) {
     "The panels are every frame the camera produced, usually 30 to 60 per second, over about half a second.",
     "blink_count is how many times the eyelids close in the small panels, read left to right.",
     "A blink is the change from pupils visible to lids covering the pupils.",
-    "Count that change even when the eyes are still shut at the end of the sheet.",
-    "Do not wait for the eyes to open again in this sheet, and do not return 0 for that reason.",
-    "Eyes that are already shut in the first panel and then open are the end of an earlier blink. Do not count that.",
-    "Eyes that stay shut in every small panel are not a new blink.",
+    "Count that close even when the eyes stay shut through the end of the sheet.",
+    "If the eyes are shut in every small panel, blink_count is 0 and eyes_closed is true.",
+    "A held close is still a blink. It is not one blink per panel, and it does not end until the eyes open.",
+    "eyes_closed is true when the lids cover the pupils in the last small panel, and false when the pupils are visible there.",
+    "Eyes that are already shut in the first panel and then open are not an extra blink.",
     "Several shut panels after one close are one blink, not one blink per panel.",
     "The person may wear glasses. A bright reflection is not an open eye.",
     "Looking down with the pupils still visible is not a blink. Lids covering the pupils is a blink even if the chin drops.",
@@ -40,7 +42,7 @@ export function contactSheetPrompt(panelCount: number, durationMs: number) {
     "25 to 45: a real slouch, face much closer to the camera than the chest.",
     "1 to 20: collapsed toward the desk.",
     "A slouch and sitting up must differ by at least 25 points. Do not reuse one number for every sheet.",
-    "If no face is visible, face_visible is false, blink_count is 0, posture_score is 50, and head and shoulders are unknown.",
+    "If no face is visible, face_visible is false, blink_count is 0, eyes_closed is false, posture_score is 50, and head and shoulders are unknown.",
     "Do not identify the person.",
   ].join(" ");
 }
@@ -52,11 +54,12 @@ export function deskSchema() {
     properties: {
       face_visible: { type: "boolean" },
       blink_count: { type: "integer" },
+      eyes_closed: { type: "boolean" },
       posture_score: { type: "integer" },
       head: { type: "string", enum: [...HEADS] },
       shoulders: { type: "string", enum: [...SHOULDERS] },
     },
-    required: ["face_visible", "blink_count", "posture_score", "head", "shoulders"],
+    required: ["face_visible", "blink_count", "eyes_closed", "posture_score", "head", "shoulders"],
   };
 }
 
@@ -125,6 +128,7 @@ export function parseDeskContent(content: string): DeskScore | null {
   return {
     face_visible: record.face_visible,
     blink_count: Math.max(0, Math.min(4, Math.round(record.blink_count))),
+    eyes_closed: record.eyes_closed === true,
     posture_score: postureOutOf100(record.posture_score),
     head: record.head as HeadState,
     shoulders: record.shoulders as ShoulderState,

@@ -28,7 +28,7 @@ static char truncated[] =
 int main() {
   DeskScoreRead score;
   if (!readDeskScore(sample, &score)) return 1;
-  if (!score.face || score.blinks != 1 || score.posture != 72) return 2;
+  if (!score.face || score.blinks != 1 || score.posture != 72 || score.eyesClosed) return 2;
   if (strcmp(score.head, "upright") != 0 || strcmp(score.shoulders, "level") != 0) return 3;
 
   if (!readDeskScore(spaced, &score)) return 4;

@@ -19,6 +19,8 @@ export type Reading = {
   head: HeadState;
   shoulders: ShoulderState;
   degraded: boolean;
+  /** Last panel still has the lids shut. The stare clock waits for the eyes to open. */
+  eyesClosed?: boolean;
   /** Wall-clock time when the last frame in this window was captured. */
   clipEndedAt: number;
 };
@@ -36,6 +38,7 @@ export type AlertState = {
   breakUntil: number | null;
   lastBreakStartedAt: number;
   postureScore: number | null;
+  eyesShut: boolean;
   head: HeadState | null;
   shoulders: ShoulderState | null;
   phase: Phase;
@@ -59,6 +62,7 @@ export function initialAlertState(now: number): AlertState {
     breakUntil: null,
     lastBreakStartedAt: now,
     postureScore: null,
+    eyesShut: false,
     head: null,
     shoulders: null,
     phase: "live",
@@ -98,6 +102,7 @@ function followClock(state: AlertState, now: number): StepResult {
           lastBreakStartedAt: state.breakUntil,
           lastBlinkAt: state.breakUntil,
           secondsSinceBlink: 0,
+          eyesShut: false,
         },
         buzz: null,
         note: "Break over.",
@@ -114,7 +119,7 @@ function followClock(state: AlertState, now: number): StepResult {
     return { state, buzz: null, note: "" };
   }
 
-  const secondsSinceBlink = Math.max(0, (now - state.lastBlinkAt) / 1000);
+  const secondsSinceBlink = state.eyesShut ? state.secondsSinceBlink : Math.max(0, (now - state.lastBlinkAt) / 1000);
   const { kept, blinksPerMinute } = blinksInLastMinute(state.blinkEvents, now);
   const countChanged = blinksPerMinute !== state.blinksPerMinute;
   if (!countChanged && Math.abs(secondsSinceBlink - state.secondsSinceBlink) < 0.05) {
@@ -143,7 +148,7 @@ function blinkReminder(state: AlertState, now: number): StepResult | null {
   const counted: AlertState = { ...state, blinkEvents: kept, blinksPerMinute };
   const secondsSinceBlink = Math.max(0, (now - state.lastBlinkAt) / 1000);
 
-  if (now - state.lastBlinkAt >= BLINK_GAP_MS) {
+  if (!state.eyesShut && now - state.lastBlinkAt >= BLINK_GAP_MS) {
     return {
       state: { ...counted, secondsSinceBlink, lastBlinkAlertAt: now },
       buzz: "B",
@@ -198,6 +203,7 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
         ...state,
         phase: "no-face",
         postureScore: null,
+        eyesShut: false,
         head: "unknown",
         shoulders: "unknown",
       },
@@ -206,12 +212,28 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
     };
   }
 
-  const blinked = reading.blinkCount > 0;
-  const lastBlinkAt = blinked ? now : due.state.lastBlinkAt;
-  const secondsSinceBlink = blinked ? 0 : Math.max(0, (now - lastBlinkAt) / 1000);
-  const events = blinked
-    ? [...due.state.blinkEvents, { at: now, count: reading.blinkCount }]
-    : due.state.blinkEvents;
+  const shut = reading.eyesClosed === true;
+  let lastBlinkAt = due.state.lastBlinkAt;
+  let secondsSinceBlink = due.state.eyesShut
+    ? due.state.secondsSinceBlink
+    : Math.max(0, (now - lastBlinkAt) / 1000);
+  let eyesShut = due.state.eyesShut;
+  let events = due.state.blinkEvents;
+  if (shut) {
+    if (!eyesShut) {
+      const count = reading.blinkCount > 0 ? reading.blinkCount : 1;
+      events = [...events, { at: now, count }];
+      secondsSinceBlink = Math.max(0, (now - lastBlinkAt) / 1000);
+      eyesShut = true;
+    } else if (reading.blinkCount > 0) {
+      events = [...events, { at: now, count: reading.blinkCount }];
+    }
+  } else if (eyesShut || reading.blinkCount > 0) {
+    if (reading.blinkCount > 0) events = [...events, { at: now, count: reading.blinkCount }];
+    lastBlinkAt = now;
+    secondsSinceBlink = 0;
+    eyesShut = false;
+  }
   const { kept, blinksPerMinute } = blinksInLastMinute(events, now);
 
   const bad = reading.postureScore <= POSTURE_BAD_AT;
@@ -226,11 +248,12 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
     blinksPerMinute,
     badPostureStreak,
     postureScore: reading.postureScore,
+    eyesShut,
     head: reading.head,
     shoulders: reading.shoulders,
   };
 
-  const reminder = !reading.degraded && !blinked ? blinkReminder(next, now) : null;
+  const reminder = !reading.degraded && !eyesShut && reading.blinkCount <= 0 ? blinkReminder(next, now) : null;
   if (reminder) return reminder;
 
   const postureReady =

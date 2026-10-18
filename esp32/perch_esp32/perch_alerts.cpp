@@ -29,6 +29,8 @@ PerchStep clock_only(PerchState state, uint32_t now) {
       step.state.breakUntil = 0;
       step.state.lastBreakStartedAt = state.breakUntil;
       step.state.lastBlinkAt = state.breakUntil;
+      step.state.eyesShut = false;
+      step.state.heldGapMs = 0;
       step.note = "break over.";
     }
     return step;
@@ -52,7 +54,7 @@ PerchStep remind(PerchState state, uint32_t now) {
   const bool cooled = !state.blinkAlertSet || now - state.lastBlinkAlertAt >= static_cast<uint32_t>(kCooldownMs);
   if (!cooled) return quiet;
   keep_minute(&state, now);
-  if (now - state.lastBlinkAt >= static_cast<uint32_t>(kBlinkGapMs)) {
+  if (!state.eyesShut && now - state.lastBlinkAt >= static_cast<uint32_t>(kBlinkGapMs)) {
     state.lastBlinkAlertAt = now;
     state.blinkAlertSet = true;
     return PerchStep{state, kBuzzBlink, "looking at screen for too long!"};
@@ -100,20 +102,36 @@ PerchStep perch_apply(PerchState state, PerchReading reading, uint32_t now) {
   if (!reading.faceVisible) {
     due.state.phase = kPhaseNoFace;
     due.state.postureScore = -1;
+    due.state.eyesShut = false;
     due.note = "step into frame.";
     return due;
   }
-  if (reading.blinkCount > 0) {
-    int n = reading.blinkCount > 4 ? 4 : reading.blinkCount;
-    for (int i = 0; i < n; i++) push_blink(&due.state, now);
-  }
   due.state.phase = kPhaseLive;
-  due.state.lastBlinkAt = reading.blinkCount > 0 ? now : due.state.lastBlinkAt;
+  if (reading.eyesClosed) {
+    if (!due.state.eyesShut) {
+      int n = reading.blinkCount > 0 ? reading.blinkCount : 1;
+      if (n > 4) n = 4;
+      for (int i = 0; i < n; i++) push_blink(&due.state, now);
+      due.state.heldGapMs = now - due.state.lastBlinkAt;
+      due.state.eyesShut = true;
+    } else if (reading.blinkCount > 0) {
+      int n = reading.blinkCount > 4 ? 4 : reading.blinkCount;
+      for (int i = 0; i < n; i++) push_blink(&due.state, now);
+    }
+  } else if (due.state.eyesShut || reading.blinkCount > 0) {
+    if (reading.blinkCount > 0) {
+      int n = reading.blinkCount > 4 ? 4 : reading.blinkCount;
+      for (int i = 0; i < n; i++) push_blink(&due.state, now);
+    }
+    due.state.eyesShut = false;
+    due.state.heldGapMs = 0;
+    due.state.lastBlinkAt = now;
+  }
   due.state.postureScore = reading.postureScore;
   if (reading.postureScore <= kPostureBadAt) due.state.badPostureStreak += 1;
   else due.state.badPostureStreak = 0;
 
-  if (!reading.degraded && reading.blinkCount <= 0) {
+  if (!reading.degraded && !due.state.eyesShut && reading.blinkCount <= 0) {
     PerchStep reminder = remind(due.state, now);
     if (reminder.buzz != kBuzzNone) return reminder;
   }

@@ -125,6 +125,8 @@ bool readDeskScore(char* body, DeskScoreRead* out) {
   if (blinks < 0) blinks = 0;
   if (blinks > 4) blinks = 4;
   out->blinks = blinks;
+  const char* shutAt = lastValue(body, "eyes_closed", false);
+  out->eyesClosed = shutAt && (shutAt[0] == 't' || shutAt[0] == 'T' || shutAt[0] == '1');
   out->posture = postureOutOf100(atoi(postureAt));
   readToken(headAt, out->head, sizeof(out->head));
   readToken(shouldersAt, out->shoulders, sizeof(out->shoulders));

@@ -18,6 +18,8 @@ enum PerchPhase { kPhaseLive = 0, kPhaseBreak = 1, kPhaseNoFace = 2 };
 
 struct PerchState {
   uint32_t lastBlinkAt;
+  uint32_t heldGapMs;
+  bool eyesShut;
   uint32_t blinkAt[32];
   int blinkCount;
   int blinksPerMinute;
@@ -37,6 +39,7 @@ struct PerchReading {
   int blinkCount;
   int postureScore;
   bool degraded;
+  bool eyesClosed;
 };
 
 struct PerchStep {
