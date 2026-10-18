@@ -46,8 +46,7 @@ constexpr int kSheetW = 584;
 constexpr int kSheetH = 144;
 constexpr int kPostureX = 392;
 constexpr size_t kPayloadLen = 4 + kPixels;
-constexpr size_t kJpegCap = 96 * 1024;
-constexpr size_t kBodyCap = 180 * 1024;
+constexpr size_t kJpegCap = 48 * 1024;
 constexpr int kBuzzerPin = 4;
 constexpr int kGreenPin = 5;
 constexpr int kYellowPin = 6;
@@ -101,6 +100,7 @@ static int frameCount = 0;
 static uint8_t* sheet = nullptr;
 static uint8_t* jpeg = nullptr;
 static uint8_t* body = nullptr;
+static size_t bodyCap = 0;
 static uint8_t* payload = nullptr;
 static bool ready = false;
 static bool wifiUp = false;
@@ -237,7 +237,7 @@ void showStatus() {
   bool green = false;
   if (!ready) {
     setLeds(false, false, true);
-    paintLcd("PSRAM required", "Enable PSRAM");
+    paintLcd("Need RAM", "Set OPI PSRAM");
     return;
   }
   if (buzzing && alerts.phase != kPhaseBreak) red = true;
@@ -311,16 +311,30 @@ void applyBuzz(PerchStep step) {
   }
 }
 
+uint8_t* allocBuf(size_t bytes) {
+  uint8_t* buffer = nullptr;
+  if (psramFound()) buffer = (uint8_t*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!buffer) buffer = (uint8_t*)heap_caps_malloc(bytes, MALLOC_CAP_8BIT);
+  return buffer;
+}
+
+void freeScratch() {
+  free(sheet);
+  free(jpeg);
+  free(body);
+  sheet = nullptr;
+  jpeg = nullptr;
+  body = nullptr;
+  bodyCap = 0;
+}
+
 bool allocBoard() {
   for (int i = 0; i < kPanels; i++) {
-    frames[i] = (uint8_t*)heap_caps_malloc(kPixels, MALLOC_CAP_SPIRAM);
+    frames[i] = allocBuf(kPixels);
     if (!frames[i]) return false;
   }
-  sheet = (uint8_t*)heap_caps_malloc((size_t)kSheetW * kSheetH, MALLOC_CAP_SPIRAM);
-  jpeg = (uint8_t*)heap_caps_malloc(kJpegCap, MALLOC_CAP_SPIRAM);
-  body = (uint8_t*)heap_caps_malloc(kBodyCap, MALLOC_CAP_SPIRAM);
-  payload = (uint8_t*)heap_caps_malloc(kPayloadLen, MALLOC_CAP_SPIRAM);
-  return sheet && jpeg && body && payload;
+  payload = allocBuf(kPayloadLen);
+  return payload != nullptr;
 }
 
 void blit(const uint8_t* src, int sw, int sh, int dx, int dy) {
@@ -378,7 +392,7 @@ size_t base64Into(const uint8_t* input, size_t length, uint8_t* output, size_t c
 
 bool appendText(size_t* used, const char* text) {
   size_t n = strlen(text);
-  if (*used + n >= kBodyCap) return false;
+  if (*used + n >= bodyCap) return false;
   memcpy(body + *used, text, n);
   *used += n;
   return true;
@@ -513,22 +527,45 @@ void scoreSheet() {
     releaseHost();
     return;
   }
+  sheet = allocBuf((size_t)kSheetW * kSheetH);
+  jpeg = allocBuf(kJpegCap);
+  if (!sheet || !jpeg) {
+    freeScratch();
+    sayError("ram");
+    releaseHost();
+    return;
+  }
   composeSheet();
   size_t jpegSize = jpeg_gray_encode(sheet, kSheetW, kSheetH, 60, jpeg, kJpegCap);
+  free(sheet);
+  sheet = nullptr;
   if (jpegSize == 0) {
+    freeScratch();
     sayError("jpeg");
     releaseHost();
     return;
   }
 
+  bodyCap = strlen(kPrefix) + (4 * ((jpegSize + 2) / 3)) + strlen(kPrompt) + 80;
+  body = allocBuf(bodyCap);
+  if (!body) {
+    freeScratch();
+    sayError("ram");
+    releaseHost();
+    return;
+  }
   size_t used = 0;
   if (!appendText(&used, kPrefix)) {
+    freeScratch();
     sayError("jpeg");
     releaseHost();
     return;
   }
-  size_t encoded = base64Into(jpeg, jpegSize, body + used, kBodyCap - used);
+  size_t encoded = base64Into(jpeg, jpegSize, body + used, bodyCap - used);
+  free(jpeg);
+  jpeg = nullptr;
   if (encoded == 0) {
+    freeScratch();
     sayError("jpeg");
     releaseHost();
     return;
@@ -536,6 +573,7 @@ void scoreSheet() {
   used += encoded;
   if (!appendText(&used, "\"}},{\"type\":\"text\",\"text\":\"") || !appendText(&used, kPrompt) ||
       !appendText(&used, "\"}]}]}")) {
+    freeScratch();
     sayError("jpeg");
     releaseHost();
     return;
@@ -543,6 +581,7 @@ void scoreSheet() {
 
   String response;
   int code = postJson("https://api.perceptron.inc/v1/chat/completions", body, used, true, &response);
+  freeScratch();
   if (code != 200) {
     char message[24];
     snprintf(message, sizeof(message), "perceptron %d", code);
@@ -693,9 +732,15 @@ void setup() {
   Serial.begin(921600);
   delay(200);
   if (!allocBoard()) {
-    sayError("psram required");
+    sayError("ram");
+    Serial.println("note Tools > PSRAM > OPI PSRAM, then upload again. If that fails, choose QSPI PSRAM.");
     showStatus();
     return;
+  }
+  Serial.print("psram ");
+  Serial.println(ESP.getPsramSize());
+  if (!psramFound()) {
+    Serial.println("note PSRAM is off. Set Tools > PSRAM to OPI PSRAM and upload again.");
   }
   ready = true;
   connectWifi();
