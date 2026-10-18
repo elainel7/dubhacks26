@@ -16,45 +16,46 @@ shared/      empty placeholder for code used by more than one app
 index.html   copy of web/index.html
 app/         Next.js pages: /, /device/[deviceId], /camera
 components/  Perch UI (kebab-case files, PascalCase components)
-lib/         device id, serial, and sound helpers
-vision/      Perceptron scoring
+esp32/       ESP32 firmware. The board builds contact sheets, calls Perceptron, buzzes, and writes Tiger Data
+lib/         device id and serial helpers
+vision/      laptop camera peripheral. It sends frames. It does not score them
 render.yaml  Render blueprint; posture-api runs with root directory backend
 ```
 
-Porkbun Static Hosting publishes the `main` branch root to nohunch.club, so `index.html` stays at the repo root and must stay identical to `web/index.html`. The Perch Next.js app (`app/`, `components/`, `lib/`, `vision/`, `package.json`) also stays at the repo root. `vision/` holds the Perceptron scoring code. `backend/.env.example` holds the Perceptron key placeholders and `DATABASE_URL`. Copy it to `.env.local` for the camera app, and to `backend/.env` for the API.
+Porkbun Static Hosting publishes the `main` branch root to nohunch.club, so `index.html` stays at the repo root and must stay identical to `web/index.html`. The Perch Next.js app (`app/`, `components/`, `lib/`, `vision/`, `package.json`) also stays at the repo root. `vision/` sends camera frames to the ESP32. The live Perceptron key belongs in `esp32/perch_esp32/secrets.h`. `backend/.env.example` holds API placeholders and `DATABASE_URL`. Copy it to `backend/.env` for the posture API.
 
 ## Perch
 
-The laptop camera watches. Perceptron Mk1.5 scores blinks and posture. An Arduino Uno buzzes. Until the board is plugged in, the laptop speaker beeps on its own.
+The laptop is a USB camera for an ESP32. The ESP32 builds a grayscale contact sheet, asks Perceptron Mk1.5, buzzes on its own piezo, and posts the posture number to Tiger Data under the device id in its `secrets.h`. The website does not score and does not beep.
 
 ## Run the site
 
 ```bash
 npm install
-cp backend/.env.example .env.local
-```
-
-Put your key in `.env.local`:
-
-```
-PERCEPTRON_API_KEY=sk-...
-PERCEPTRON_MODEL=perceptron-mk1.5
-```
-
-```bash
 npm run dev
 ```
 
-Open [http://localhost:43123](http://localhost:43123) in Chrome or Edge.
+Open [http://localhost:43123](http://localhost:43123) in Chrome or Edge. Pull the latest `main` first if you already have a checkout.
 
-1. The first page asks for the buzzer's device id and opens the numbers for that id.
-2. **Camera** in the nav shows the webcam. Click **Allow the camera**. A stare of about 8 seconds beeps twice. Three low posture scores in a row beep three times. A 20-minute stretch starts a 20-second break beep. There is no fake score mode.
-3. Perceptron code lives in `vision/`. The camera packs every frame from about half a second into one contact sheet. Posture is 1–100 from the large panel only. 60 or below is poor. Frames are not stored or shown on the numbers page.
-4. Flash `arduino/perch_buzzer/perch_buzzer.ino` when the Uno is here. Piezo + goes to pin 8, piezo − to GND. **Connect Uno** on the camera page sends the same beeps to the board.
+1. The first page asks for a device id and opens the chart for that id. Use the id compiled into the ESP32.
+2. **Camera** asks for the webcam, then **Connect ESP32**. Pick the board's USB serial port. The page sends 96×72 grayscale frames and shows the numbers the board sends back.
+3. A 5-second stare buzzes on the board. Under 20 blinks in a minute buzzes again. Three posture scores of 60 or below buzz a different pattern. A 20-minute stretch starts a 20-second break buzz.
 
-Scoring stops automatically around $3 of Mk1.5 usage (input $0.15 / million tokens, output $1.50 / million). Restart the page to reset the counter.
+`npm test` checks the blink clock, the USB frame packet, and the posture event mapping.
 
-`npm test` checks the blink clock, posture streak, break, frame window, posture label mapping, and the events route.
+## ESP32
+
+The firmware lives at `esp32/perch_esp32/perch_esp32.ino`. On GitHub that is [elainel7/dubhacks26](https://github.com/elainel7/dubhacks26/blob/main/esp32/perch_esp32/perch_esp32.ino), folder `esp32/perch_esp32/`.
+
+1. Install Arduino IDE 2 and, in Boards Manager, the **esp32** package by Espressif.
+2. **File → Open** and choose `esp32/perch_esp32/perch_esp32.ino`. The IDE loads `jpeg_gray` and `perch_alerts` from that same folder. Leave `esp32/tests/` alone. Those files are host checks, not part of the sketch.
+3. Copy `secrets.example.h` to `secrets.h` in that folder. Fill in Wi-Fi, a device id (letters, numbers, hyphens, or underscores), and the Perceptron key. `secrets.h` is gitignored. Do not commit it.
+4. ESP32-S3: board **ESP32S3 Dev Module**, **USB CDC On Boot: Enabled**, **PSRAM: Enabled** (or OPI PSRAM). ESP32-WROVER: board **ESP32 Wrover Module**, **PSRAM: Enabled**. The sketch uses 921600 baud either way. PSRAM is required.
+5. Passive piezo + to GPIO 4, piezo − to GND. An LED on GPIO 2 is optional.
+6. Upload. You can open Serial Monitor at 921600 and look for `device your-id`, then close the monitor. The website and the monitor cannot share the port.
+7. In Chrome, open **Camera**, allow the camera, click **Connect ESP32**, and pick the port. The chart for that device id fills in after the board posts a score. The aggregate on the chart can lag about a minute.
+
+The board prints `ok` after each frame and holds that reply while it calls Perceptron, so the laptop does not overrun the serial buffer. A missing face is not saved. A forward head is `leaning_forward`. Posture 60 or below is `slouching`. Anything else visible is `good`.
 
 ## Build plan
 
@@ -272,6 +273,8 @@ The demo button is required. Judges will not wait 20 minutes.
 Web Audio when serial is not connected: oscillator, same rhythm, so unplugging the board changes nothing about detection.
 
 ## Arduino
+
+The live buzzer is the ESP32 sketch in `esp32/perch_esp32/`. The Uno file `arduino/perch_buzzer/perch_buzzer.ino` is the older letter-only buzzer (pin 8, 9600 baud) and is not what the camera page drives anymore.
 
 Passive piezo on pin 8, LED and a 220Ω resistor on pin 7, USB serial at 9600. `delay()` blocking the 20-second pattern is fine. The page sends `R` once and does not send `B` or `P` during the break.
 

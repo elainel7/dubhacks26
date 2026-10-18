@@ -44,3 +44,6 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# ESP32 Wi-Fi and Perceptron key
+esp32/perch_esp32/secrets.h

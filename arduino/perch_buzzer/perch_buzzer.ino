@@ -1,6 +1,6 @@
-// Perch buzzer for an Arduino Uno.
-// The laptop camera and Perceptron Mk1.5 decide when to buzz.
-// This board only plays a sound. It never sees a frame.
+// Older Uno buzzer. The live firmware is esp32/perch_esp32/perch_esp32.ino.
+// That ESP32 receives the camera, scores, buzzes, and writes Tiger Data.
+// This sketch only plays B, P, or R if something still sends those letters.
 //
 // Wiring:
 //   Passive piezo +  -> digital pin 8

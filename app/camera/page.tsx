@@ -4,7 +4,7 @@ import { CameraView } from "@/vision/camera-view";
 
 export const metadata: Metadata = {
   title: "Camera",
-  description: "The Perch camera scores blinks and posture. Frames are not stored.",
+  description: "The laptop camera sends frames to an ESP32. The board scores, buzzes, and saves. Frames are not stored.",
 };
 
 export default function CameraPage() {
