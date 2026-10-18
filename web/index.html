@@ -931,7 +931,9 @@
     let blinkTimer = 0;
     let clockTimer = 0;
     let serialChain = Promise.resolve();
-    let blinkSendQueued = false;
+    let boardCmdSending = false;
+    let stareChirped = false;
+    const boardCmds = [];
 
     function trackBlink(track, score, now) {
       if (score < BLINK_SHUT) return { track: { armed: true, shutFrames: 0, lastFireAt: track.lastFireAt }, blinked: false };
@@ -970,6 +972,15 @@
       if (!blinkWatch.holding && gap >= 5) notes.push("Blink");
       if (postureNeedsSit) notes.push("Sit up taller");
       showReminder(notes);
+      const dueHolding = blinkWatch.holding;
+      if (dueHolding) {
+        /* A held close is not a stare. */
+      } else if (gap < 5) {
+        stareChirped = false;
+      } else if (!stareChirped && footageCollecting) {
+        stareChirped = true;
+        queueBoardCmd("chirp\n");
+      }
     }
 
     function takeBoardGap(gapSeconds, now) {
@@ -1075,6 +1086,8 @@
     function resetBlinkWatch() {
       blinkWatch = { track: { armed: true, shutFrames: 0, lastFireAt: null }, holding: false, frozenGap: null, marks: [] };
       previousBoardGap = null;
+      stareChirped = false;
+      boardCmds.length = 0;
     }
 
     function stopBlinkWatch() {
@@ -1128,23 +1141,27 @@
       });
     }
 
-    let blinkPending = false;
-
-    function flushBoardBlink() {
-      if (!blinkPending || blinkSendQueued || !footageWriter) return;
-      blinkPending = false;
-      blinkSendQueued = true;
-      writeExclusive(() => footageWriter.write(new TextEncoder().encode("blink\n")))
-        .catch(() => {})
+    function flushBoardCmds() {
+      if (boardCmdSending || !boardCmds.length || !footageWriter) return;
+      const line = boardCmds.shift();
+      boardCmdSending = true;
+      writeExclusive(() => footageWriter.write(new TextEncoder().encode(line)))
+        .catch(() => {
+          boardCmds.unshift(line);
+        })
         .finally(() => {
-          blinkSendQueued = false;
-          if (blinkPending) flushBoardBlink();
+          boardCmdSending = false;
+          if (boardCmds.length) flushBoardCmds();
         });
     }
 
+    function queueBoardCmd(line) {
+      boardCmds.push(line);
+      flushBoardCmds();
+    }
+
     function queueBoardBlink() {
-      blinkPending = true;
-      flushBoardBlink();
+      queueBoardCmd("blink\n");
     }
 
     function noteDevice(id) {
@@ -1412,7 +1429,7 @@
         canvas.width = FRAME_W;
         canvas.height = FRAME_H;
         setFootage(true, "");
-        flushBoardBlink();
+        flushBoardCmds();
         const bootStart = performance.now();
         while (!boardReady) {
           if (footageStop) return;
@@ -1451,7 +1468,7 @@
           const scoringStarted = performance.now();
           while (!idleLatched) {
             if (footageStop) return;
-            flushBoardBlink();
+            flushBoardCmds();
             rememberFrame();
             if (performance.now() - scoringStarted > 45000) {
               throw new Error("The ESP32 did not answer. It started a score and never finished. Last line: " + (lastLine || "none") + ".");

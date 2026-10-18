@@ -77,6 +77,21 @@ export function watchBlink(watch: BlinkWatch, score: number, faceVisible: boolea
   return { watch: { ...watch, track: step.track }, committed: false };
 }
 
+/** The fast chirp. One per stare, when the open-eye clock first reaches this. */
+export const STARE_CHIRP_SECONDS = 5;
+
+/**
+ * Fires once when the stare clock reaches 5 seconds. A held close does not
+ * chirp and does not re-arm the chirp. The latch clears after the eyes open
+ * and the clock drops back under 5.
+ */
+export function stareChirpDue(chirped: boolean, gap: number | null, holding: boolean) {
+  if (holding) return { chirped, fire: false };
+  if (gap == null || gap < STARE_CHIRP_SECONDS) return { chirped: false, fire: false };
+  if (chirped) return { chirped: true, fire: false };
+  return { chirped: true, fire: true };
+}
+
 /** Seconds since the last open. Frozen while the lids stay shut. */
 export function blinkGapSeconds(watch: BlinkWatch, now: number) {
   if (watch.holding && watch.frozenGap != null) return watch.frozenGap;

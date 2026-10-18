@@ -30,6 +30,8 @@
 #include <time.h>
 #include <sys/time.h>
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include "jpeg_gray.h"
 #include "perch_alerts.h"
@@ -115,6 +117,8 @@ enum RxState { kWait0, kWait1, kHeader, kPayload, kCrc };
 static RxState rxState = kWait0;
 static char cmd[8];
 static uint8_t cmdLen = 0;
+static volatile bool scoringNow = false;
+static SemaphoreHandle_t serialMux = nullptr;
 static uint8_t header[6];
 static size_t rxGot = 0;
 static uint16_t rxCrc = 0xFFFF;
@@ -523,6 +527,17 @@ int postPerceptron(const uint8_t* data, size_t length, char** reply, size_t* rep
   return code;
 }
 
+struct ScoringGate {
+  ScoringGate() { scoringNow = true; }
+  ~ScoringGate() {
+    scoringNow = false;
+    if (serialMux) {
+      xSemaphoreTake(serialMux, portMAX_DELAY);
+      xSemaphoreGive(serialMux);
+    }
+  }
+};
+
 void postEvent(bool face, int posture, const char* head, unsigned gapTenths, int blinksPerMinute) {
   if (!face) {
     Serial.println("not saved to Tiger Data. face is hidden.");
@@ -567,7 +582,12 @@ void postEvent(bool face, int posture, const char* head, unsigned gapTenths, int
   snprintf(url, sizeof(url), "%s/events", base);
   Serial.print("posting to Tiger Data. ");
   Serial.println(json);
-  int code = postJson(url, (const uint8_t*)json, strlen(json), false, nullptr, 8000);
+  int code;
+  {
+    ScoringGate scoring;
+    (void)scoring;
+    code = postJson(url, (const uint8_t*)json, strlen(json), false, nullptr, 8000);
+  }
   if (code == 200 || code == 201) {
     Serial.println("saved to Tiger Data.");
     Serial.println("saved");
@@ -674,7 +694,12 @@ void scoreSheet() {
   char* reply = nullptr;
   size_t replyLen = 0;
   int announced = -1;
-  int code = postPerceptron(body, used, &reply, &replyLen, &announced);
+  int code;
+  {
+    ScoringGate scoring;
+    (void)scoring;
+    code = postPerceptron(body, used, &reply, &replyLen, &announced);
+  }
   if (code != 200) {
     free(reply);
     char message[96];
@@ -757,6 +782,36 @@ void takeLaptopBlink() {
   lastApplyMs = now;
 }
 
+void takeLaptopChirp() {
+  uint32_t now = millis();
+  if (alerts.blinkAlertSet && now - alerts.lastBlinkAlertAt < 2000) return;
+  alerts.blinkAlertSet = true;
+  alerts.lastBlinkAlertAt = now;
+  playBuzzNow(kBuzzBlink);
+}
+
+void feed(uint8_t byte);
+
+/* Text commands only. A frame byte stays in the buffer for the main loop. */
+void drainLaptopCmds() {
+  if (rxState != kWait0) return;
+  while (Serial.available() > 0) {
+    int next = Serial.peek();
+    if (next < 0 || next == (int)kMagic0) return;
+    feed((uint8_t)Serial.read());
+  }
+}
+
+void laptopCmdTask(void*) {
+  for (;;) {
+    if (scoringNow && serialMux && xSemaphoreTake(serialMux, pdMS_TO_TICKS(10)) == pdTRUE) {
+      if (scoringNow) drainLaptopCmds();
+      xSemaphoreGive(serialMux);
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+  }
+}
+
 void feed(uint8_t byte) {
   rxMarkMs = millis();
   if (rxState == kWait0) {
@@ -768,6 +823,8 @@ void feed(uint8_t byte) {
     if (byte == '\n' || byte == '\r') {
       if (cmdLen == 5 && cmd[0] == 'b' && cmd[1] == 'l' && cmd[2] == 'i' && cmd[3] == 'n' && cmd[4] == 'k') {
         takeLaptopBlink();
+      } else if (cmdLen == 5 && cmd[0] == 'c' && cmd[1] == 'h' && cmd[2] == 'i' && cmd[3] == 'r' && cmd[4] == 'p') {
+        takeLaptopChirp();
       }
       cmdLen = 0;
       return;
@@ -884,6 +941,8 @@ void setup() {
   alerts = perch_initial(millis());
   hello();
   Serial.println("note perch sketch ready");
+  serialMux = xSemaphoreCreateMutex();
+  xTaskCreate(laptopCmdTask, "chirp", 4096, nullptr, 1, nullptr);
   connectWifi();
   showStatus();
 }

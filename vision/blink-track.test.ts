@@ -6,6 +6,7 @@ import {
   initialBlinkTrack,
   initialBlinkWatch,
   shownGapAt,
+  stareChirpDue,
   takeBoardGap,
   trackBlink,
   watchBlink,
@@ -81,6 +82,27 @@ test("a climbing board gap does not overwrite a laptop blink", () => {
   const caught = takeBoardGap(stale.watch, 0.4, 110_000, stale.previousBoardGap);
   assert.equal(caught.watch.marks.length, stale.watch.marks.length + 1);
   assert.ok(Math.abs((blinkGapSeconds(caught.watch, 110_000) ?? 0) - 0.4) < 0.05);
+});
+
+test("the chirp fires once when the stare clock reaches five seconds", () => {
+  const under = stareChirpDue(false, 4.9, false);
+  assert.equal(under.fire, false);
+  assert.equal(under.chirped, false);
+
+  const hit = stareChirpDue(false, 5, false);
+  assert.equal(hit.fire, true);
+  assert.equal(hit.chirped, true);
+
+  const still = stareChirpDue(true, 8, false);
+  assert.equal(still.fire, false);
+
+  const held = stareChirpDue(false, 6, true);
+  assert.equal(held.fire, false);
+  assert.equal(held.chirped, false);
+
+  const reset = stareChirpDue(true, 0.2, false);
+  assert.equal(reset.chirped, false);
+  assert.equal(reset.fire, false);
 });
 
 test("a chart point uses the blink that happened before it", () => {
