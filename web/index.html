@@ -171,10 +171,23 @@
     #samples .good { color: var(--good); }
     #samples .bad { color: var(--bad); }
     .chart-heading p { margin: 6px 0 0; color: var(--muted); }
+    .chart-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 14px;
+    }
+    .chart-sub {
+      margin: 0;
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.35rem;
+      font-weight: 560;
+      letter-spacing: -0.03em;
+    }
     .chart-frame {
       position: relative;
-      height: 340px;
-      margin-top: 12px;
+      height: 280px;
+      margin-top: 8px;
     }
     .chart-message {
       display: none;
@@ -204,8 +217,8 @@
     }
     .chart-frame.is-empty canvas,
     .chart-frame.is-loading canvas { visibility: hidden; }
-    .chart-frame.is-empty #empty-chart,
-    .chart-frame.is-loading #loading-chart { display: grid; }
+    .chart-frame.is-empty .chart-message.is-empty,
+    .chart-frame.is-loading .chart-message.is-loading { display: grid; }
     #status {
       min-height: 1.4em;
       margin: 14px 0 0;
@@ -327,7 +340,8 @@
       .summary-stats p { font-size: 2rem; }
       .device-controls { align-items: stretch; }
       label, select, button { width: 100%; }
-      .chart-frame { height: 260px; }
+      .chart-row { grid-template-columns: 1fr; }
+      .chart-frame { height: 240px; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
@@ -408,7 +422,7 @@
     <section class="points-card chart-panel" aria-label="Blinks">
       <div class="points-head">
         <h2>Blinks</h2>
-        <p>Sent by the ESP32 with each score. The board screen no longer shows this.</p>
+        <p>Saved with each score, so this updates on any screen. The board does not show blinks. Over 5 seconds since the last blink is the fast beep.</p>
       </div>
       <div class="points-grid">
         <article>
@@ -425,19 +439,38 @@
     </section>
     <section class="chart-panel" aria-labelledby="chart-title">
       <div class="chart-heading">
-        <h2 id="chart-title">Posture</h2>
-        <p>Score from 1 to 100 for the last 10 minutes. The page checks Tiger Data every second. A new point is saved after four frames, about twice as often as before. 60 is poor posture.</p>
+        <h2 id="chart-title">Live scores</h2>
+        <p>The last 10 minutes, checked every second. Posture runs from 1 to 100, and 60 is poor. Blinks are seconds since the last blink, and 5 seconds is the fast beep.</p>
       </div>
-      <div class="chart-frame" id="chart-frame">
-        <canvas id="chart" aria-label="Posture score from 1 to 100"></canvas>
-        <p id="loading-chart" class="chart-message" role="status">
-          <strong>Loading posture</strong>
-          <span>Fetching minutes for this device id.</span>
-        </p>
-        <p id="empty-chart" class="chart-message">
-          <strong>No readings yet</strong>
-          <span>No score for this device id in the last 10 minutes.</span>
-        </p>
+      <div class="chart-row">
+        <div>
+          <h3 class="chart-sub">Posture</h3>
+          <div class="chart-frame" id="chart-frame">
+            <canvas id="chart" aria-label="Posture score from 1 to 100"></canvas>
+            <p id="loading-chart" class="chart-message is-loading" role="status">
+              <strong>Loading posture</strong>
+              <span>Fetching scores for this device id.</span>
+            </p>
+            <p id="empty-chart" class="chart-message is-empty">
+              <strong>No readings yet</strong>
+              <span>No score for this device id in the last 10 minutes.</span>
+            </p>
+          </div>
+        </div>
+        <div>
+          <h3 class="chart-sub">Blinks</h3>
+          <div class="chart-frame" id="blink-frame">
+            <canvas id="blink-chart" aria-label="Seconds since the last blink"></canvas>
+            <p id="loading-blinks" class="chart-message is-loading" role="status">
+              <strong>Loading blinks</strong>
+              <span>Fetching scores for this device id.</span>
+            </p>
+            <p id="empty-blinks" class="chart-message is-empty">
+              <strong>No blink times yet</strong>
+              <span>Blink times are saved with each new score. Older points only have posture.</span>
+            </p>
+          </div>
+        </div>
       </div>
       <p id="status" role="status"></p>
     </section>
@@ -474,8 +507,11 @@
     }
     const statusEl = document.querySelector("#status");
     const chartFrame = document.querySelector("#chart-frame");
+    const blinkFrame = document.querySelector("#blink-frame");
     const chartCanvas = document.querySelector("#chart");
+    const blinkCanvas = document.querySelector("#blink-chart");
     let chart = null;
+    let blinkChart = null;
 
     const chartFont = '"Source Sans 3", "Segoe UI", system-ui, sans-serif';
     if (typeof Chart !== "undefined") {
@@ -495,9 +531,14 @@
       return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
     }
 
+    function setFrameMode(frame, mode) {
+      frame.classList.toggle("is-loading", mode === "loading");
+      frame.classList.toggle("is-empty", mode === "empty");
+    }
+
     function setChartMode(mode) {
-      chartFrame.classList.toggle("is-loading", mode === "loading");
-      chartFrame.classList.toggle("is-empty", mode === "empty");
+      setFrameMode(chartFrame, mode);
+      setFrameMode(blinkFrame, mode);
     }
 
     function renderSummary(summary) {
@@ -552,40 +593,30 @@
       };
     }
 
-    function renderChart(events) {
-      if (typeof Chart === "undefined") return false;
-      if (!events.length) {
-        if (chart) {
-          chart.destroy();
-          chart = null;
-        }
-        setChartMode("empty");
-        return true;
+    function lineChart(canvas, existing, labels, values, color, yTitle, yMax) {
+      const manyPoints = values.length > 80;
+      if (existing) {
+        existing.data.labels = labels;
+        existing.data.datasets[0].data = values;
+        existing.data.datasets[0].pointRadius = manyPoints ? 0 : 3;
+        existing.options.scales.y.max = yMax;
+        existing.update("none");
+        return existing;
       }
-      setChartMode("ready");
-      const labels = events.map((event) => formatBucket(event.time, 1));
-      const scores = events.map((event) => event.posture);
-      const manyPoints = events.length > 80;
-      if (chart) {
-        chart.data.labels = labels;
-        chart.data.datasets[0].data = scores;
-        chart.data.datasets[0].pointRadius = manyPoints ? 0 : 3;
-        chart.update("none");
-        return true;
-      }
-      chart = new Chart(chartCanvas, {
+      return new Chart(canvas, {
         type: "line",
         data: {
           labels,
           datasets: [
             {
-              label: "Posture",
-              data: scores,
-              borderColor: "#1c4d38",
-              backgroundColor: "#1c4d38",
+              label: yTitle,
+              data: values,
+              borderColor: color,
+              backgroundColor: color,
               tension: 0.2,
               pointRadius: manyPoints ? 0 : 3,
               borderWidth: 2.5,
+              spanGaps: false,
             },
           ],
         },
@@ -608,10 +639,10 @@
           scales: {
             y: {
               beginAtZero: true,
-              max: 100,
+              max: yMax,
               title: {
                 display: true,
-                text: "Posture score",
+                text: yTitle,
                 color: "#3f4a44",
                 font: { family: chartFont, size: 13, weight: "600" },
               },
@@ -625,6 +656,57 @@
           },
         },
       });
+    }
+
+    function renderBlinks(events) {
+      let latest = null;
+      for (let i = events.length - 1; i >= 0; i -= 1) {
+        const event = events[i];
+        if (event.blink_gap != null || event.blinks_per_minute != null) latest = event;
+        if (latest) break;
+      }
+      if (!latest) return;
+      const gapEl = document.querySelector("#blink-gap");
+      const rateEl = document.querySelector("#blink-rate");
+      if (gapEl && latest.blink_gap != null) gapEl.textContent = Number(latest.blink_gap).toFixed(1) + " s";
+      if (rateEl && latest.blinks_per_minute != null) rateEl.textContent = String(latest.blinks_per_minute);
+    }
+
+    function renderChart(events) {
+      if (typeof Chart === "undefined") return false;
+      renderBlinks(events);
+      if (!events.length) {
+        if (chart) {
+          chart.destroy();
+          chart = null;
+        }
+        if (blinkChart) {
+          blinkChart.destroy();
+          blinkChart = null;
+        }
+        setChartMode("empty");
+        return true;
+      }
+      const labels = events.map((event) => formatBucket(event.time, 1));
+      const scores = events.map((event) => event.posture);
+      const gaps = events.map((event) =>
+        event.blink_gap == null || Number.isNaN(Number(event.blink_gap)) ? null : Number(event.blink_gap),
+      );
+      const hasBlinks = gaps.some((gap) => gap != null);
+      setFrameMode(chartFrame, "ready");
+      chart = lineChart(chartCanvas, chart, labels, scores, "#1c4d38", "Posture score", 100);
+      if (!hasBlinks) {
+        if (blinkChart) {
+          blinkChart.destroy();
+          blinkChart = null;
+        }
+        setFrameMode(blinkFrame, "empty");
+        return true;
+      }
+      const peak = Math.max(10, ...gaps.filter((gap) => gap != null));
+      const yMax = Math.ceil(peak);
+      setFrameMode(blinkFrame, "ready");
+      blinkChart = lineChart(blinkCanvas, blinkChart, labels, gaps, "#8a4b2f", "Seconds since blink", yMax);
       return true;
     }
 
@@ -739,6 +821,7 @@
         const live = await liveRes.json();
         const events = Array.isArray(live.events) ? live.events : [];
         renderSummary(summaryFromEvents(events));
+        renderBlinks(events);
         const chartOk = renderChart(events);
         if (!chartOk) {
           setChartMode("empty");

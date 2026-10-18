@@ -290,7 +290,8 @@ void showStatus() {
     return;
   }
   if (alerts.postureScore < 0) {
-    paintLcd("Waiting", PERCH_DEVICE_ID);
+    if (frameCount > 0) paintLcd("Watching", "Camera");
+    else paintLcd("Ready", PERCH_DEVICE_ID);
     return;
   }
   char line0[20];
@@ -548,7 +549,7 @@ int postPerceptron(const uint8_t* data, size_t length, char** reply, size_t* rep
   return code;
 }
 
-void postEvent(bool face, int posture, const char* head) {
+void postEvent(bool face, int posture, const char* head, unsigned gapTenths, int blinksPerMinute) {
   if (!face) {
     Serial.println("not saved to Tiger Data. face is hidden.");
     return;
@@ -578,10 +579,14 @@ void postEvent(bool face, int posture, const char* head) {
   char stamp[32];
   strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%SZ", &parts);
 
-  char json[240];
+  if (gapTenths > 6000) gapTenths = 6000;
+  if (blinksPerMinute < 0) blinksPerMinute = 0;
+  if (blinksPerMinute > 300) blinksPerMinute = 300;
+  char json[320];
   snprintf(json, sizeof(json),
-           "{\"time\":\"%s\",\"user_id\":\"%s\",\"label\":\"%s\",\"confidence\":%d.%02d}", stamp,
-           PERCH_DEVICE_ID, label, hundredths / 100, hundredths % 100);
+           "{\"time\":\"%s\",\"user_id\":\"%s\",\"label\":\"%s\",\"confidence\":%d.%02d,\"blink_gap\":%u.%u,\"blinks_per_minute\":%d}",
+           stamp, PERCH_DEVICE_ID, label, hundredths / 100, hundredths % 100, gapTenths / 10,
+           gapTenths % 10, blinksPerMinute);
   char base[120];
   apiBase(base, sizeof(base));
   char url[160];
@@ -684,6 +689,7 @@ void scoreSheet() {
     return;
   }
   ensureClock();
+  paintLcd("Reading", "Scoring");
 
   char* reply = nullptr;
   size_t replyLen = 0;
@@ -745,7 +751,10 @@ void scoreSheet() {
   alerts = step.state;
   lastApplyMs = millis();
   printScore(face, blinks, posture, head, shoulders);
-  postEvent(face, posture, head);
+  paintLcd("Saving", "Scores");
+  uint32_t gapMs = millis() - alerts.lastBlinkAt;
+  unsigned gapTenths = gapMs / 100;
+  postEvent(face, posture, head, gapTenths, alerts.blinksPerMinute);
   if (step.buzz != kBuzzNone) playBuzzNow(step.buzz);
   sayNote(step.note);
   releaseHost();

@@ -54,6 +54,7 @@ class FakeConn:
 
 class ApiTests(unittest.TestCase):
     def setUp(self):
+        main._blink_store = False
         self.client = TestClient(main.app)
 
     def tearDown(self):
@@ -321,6 +322,74 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(summary.json()["user_id"], long_id)
         self.assertEqual(summary.json()["most_common_bad_label"], "slouching")
         self.assertEqual(summary_conn.queries[0][1][0], long_id)
+
+    def test_blink_fields_stay_off_the_insert_until_columns_exist(self):
+        stored = datetime(2026, 10, 18, 2, 0, tzinfo=timezone.utc)
+        conn = FakeConn(
+            [{"time": stored, "user_id": "lamp-1", "label": "good", "confidence": 0.8}]
+        )
+        self.use_conn(conn)
+        created = self.client.post(
+            "/events",
+            json={
+                "time": "2026-10-18T02:00:00Z",
+                "user_id": "lamp-1",
+                "label": "good",
+                "confidence": 0.8,
+                "blink_gap": 6.5,
+                "blinks_per_minute": 12,
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+        sql, params = conn.queries[0]
+        self.assertNotIn("blink_gap", sql)
+        self.assertEqual(params, (stored, "lamp-1", "good", 0.8))
+
+    def test_blink_fields_are_stored_and_returned(self):
+        main._blink_store = True
+        stored = datetime(2026, 10, 18, 2, 0, tzinfo=timezone.utc)
+        conn = FakeConn(
+            [{"time": stored, "user_id": "lamp-1", "label": "good", "confidence": 0.8}]
+        )
+        self.use_conn(conn)
+        created = self.client.post(
+            "/events",
+            json={
+                "time": "2026-10-18T02:00:00Z",
+                "user_id": "lamp-1",
+                "label": "good",
+                "confidence": 0.8,
+                "blink_gap": 6.5,
+                "blinks_per_minute": 12,
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+        sql, params = conn.queries[0]
+        self.assertIn("blink_gap", sql)
+        self.assertEqual(params[-2:], (6.5, 12))
+
+        when = datetime(2026, 10, 18, 2, 1, tzinfo=timezone.utc)
+        live_conn = FakeConn(
+            [
+                [
+                    {
+                        "time": when,
+                        "label": "good",
+                        "confidence": 0.8,
+                        "blink_gap": 6.5,
+                        "blinks_per_minute": 12,
+                    }
+                ]
+            ]
+        )
+        self.use_conn(live_conn)
+        live = self.client.get("/users/lamp-1/live")
+        self.assertEqual(live.status_code, 200)
+        event = live.json()["events"][0]
+        self.assertEqual(event["posture"], 80)
+        self.assertEqual(event["blink_gap"], 6.5)
+        self.assertEqual(event["blinks_per_minute"], 12)
+        self.assertIn("blink_gap", live_conn.queries[0][0])
 
     def test_live_reads_recent_scores(self):
         when = datetime(2026, 10, 18, 1, 0, tzinfo=timezone.utc)

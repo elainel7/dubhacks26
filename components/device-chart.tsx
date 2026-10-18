@@ -9,6 +9,8 @@ type LiveEvent = {
   time: string;
   label: string;
   posture: number | null;
+  blink_gap?: number | null;
+  blinks_per_minute?: number | null;
 };
 
 type Payload = {
@@ -60,7 +62,27 @@ function summarize(events: LiveEvent[]) {
   };
 }
 
-function PostureScoreChart({ events }: { events: LiveEvent[] }) {
+function SeriesChart({
+  times,
+  values,
+  yMax,
+  ticks,
+  mark,
+  yLabel,
+  strokeClass,
+  ariaLabel,
+  title,
+}: {
+  times: string[];
+  values: Array<number | null>;
+  yMax: number;
+  ticks: number[];
+  mark: number | null;
+  yLabel: string;
+  strokeClass: string;
+  ariaLabel: string;
+  title: string;
+}) {
   const width = 720;
   const height = 280;
   const padLeft = 46;
@@ -69,87 +91,84 @@ function PostureScoreChart({ events }: { events: LiveEvent[] }) {
   const padBottom = 36;
   const innerWidth = width - padLeft - padRight;
   const innerHeight = height - padTop - padBottom;
-  const scores = events.map((event) => event.posture ?? 0);
 
   function xAt(index: number) {
-    if (scores.length === 1) return padLeft + innerWidth / 2;
-    return padLeft + (index * innerWidth) / (scores.length - 1);
+    if (values.length === 1) return padLeft + innerWidth / 2;
+    return padLeft + (index * innerWidth) / (values.length - 1);
   }
 
   function yAt(value: number) {
-    return padTop + innerHeight - (value / 100) * innerHeight;
+    const clamped = Math.max(0, Math.min(yMax, value));
+    return padTop + innerHeight - (clamped / yMax) * innerHeight;
   }
 
-  const path = scores
-    .map((score, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)} ${yAt(score).toFixed(1)}`)
-    .join(" ");
+  const segments: string[] = [];
+  let drawing = false;
+  values.forEach((value, index) => {
+    if (value == null || Number.isNaN(value)) {
+      drawing = false;
+      return;
+    }
+    segments.push(`${drawing ? "L" : "M"}${xAt(index).toFixed(1)} ${yAt(value).toFixed(1)}`);
+    drawing = true;
+  });
 
   return (
-    <figure className="flex flex-col gap-3">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-64 w-full sm:h-72"
-        role="img"
-        aria-label="Posture score from 1 to 100 over the last 10 minutes"
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-56 w-full sm:h-64" role="img" aria-label={ariaLabel}>
+      <title>{title}</title>
+      {ticks.map((tick) => (
+        <g key={tick}>
+          <line
+            x1={padLeft}
+            x2={width - padRight}
+            y1={yAt(tick)}
+            y2={yAt(tick)}
+            stroke="currentColor"
+            strokeOpacity={tick === mark ? 0.45 : 0.12}
+            className="text-foreground"
+          />
+          <text
+            x={padLeft - 8}
+            y={yAt(tick)}
+            textAnchor="end"
+            dominantBaseline="middle"
+            fill="currentColor"
+            fontSize="12"
+            className="text-muted-foreground"
+          >
+            {tick}
+          </text>
+        </g>
+      ))}
+      <text
+        x="14"
+        y={padTop + innerHeight / 2}
+        fill="currentColor"
+        fontSize="12"
+        textAnchor="middle"
+        transform={`rotate(-90 14 ${padTop + innerHeight / 2})`}
+        className="text-muted-foreground"
       >
-        <title>Posture score, 1 to 100</title>
-        {[100, 60, 0].map((tick) => (
-          <g key={tick}>
-            <line
-              x1={padLeft}
-              x2={width - padRight}
-              y1={yAt(tick)}
-              y2={yAt(tick)}
-              stroke="currentColor"
-              strokeOpacity={tick === 60 ? 0.45 : 0.12}
-              className="text-foreground"
-            />
-            <text
-              x={padLeft - 8}
-              y={yAt(tick)}
-              textAnchor="end"
-              dominantBaseline="middle"
-              fill="currentColor"
-              fontSize="12"
-              className="text-muted-foreground"
-            >
-              {tick}
-            </text>
-          </g>
-        ))}
-        <text
-          x="14"
-          y={padTop + innerHeight / 2}
-          fill="currentColor"
-          fontSize="12"
-          textAnchor="middle"
-          transform={`rotate(-90 14 ${padTop + innerHeight / 2})`}
-          className="text-muted-foreground"
-        >
-          Score
-        </text>
-        <path d={path} fill="none" stroke="currentColor" strokeWidth="2.75" strokeLinejoin="round" strokeLinecap="round" className="text-primary" />
-        {tickIndexes(events.length).map((index) => {
-          const anchor = index === 0 ? "start" : index === events.length - 1 ? "end" : "middle";
-          return (
-            <text
-              key={`${events[index].time}-${index}`}
-              x={xAt(index)}
-              y={height - 10}
-              textAnchor={anchor}
-              fill="currentColor"
-              fontSize="12"
-              className="text-muted-foreground"
-            >
-              {formatClock(events[index].time)}
-            </text>
-          );
-        })}
-      </svg>
-      <figcaption className="text-sm text-muted-foreground">
-        Each point is one score saved by the ESP32. 60 is the line between upright and poor posture.
-      </figcaption>
-    </figure>
+        {yLabel}
+      </text>
+      <path d={segments.join(" ")} fill="none" stroke="currentColor" strokeWidth="2.75" strokeLinejoin="round" strokeLinecap="round" className={strokeClass} />
+      {tickIndexes(times.length).map((index) => {
+        const anchor = index === 0 ? "start" : index === times.length - 1 ? "end" : "middle";
+        return (
+          <text
+            key={`${times[index]}-${index}`}
+            x={xAt(index)}
+            y={height - 10}
+            textAnchor={anchor}
+            fill="currentColor"
+            fontSize="12"
+            className="text-muted-foreground"
+          >
+            {formatClock(times[index])}
+          </text>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -192,6 +211,13 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
   }, [deviceId]);
 
   const summary = events ? summarize(events) : null;
+  const savedBlink = [...(events ?? [])].reverse().find((event) => event.blink_gap != null || event.blinks_per_minute != null);
+  const blinkGap = blink && Number.isFinite(blink.gap) ? blink.gap : savedBlink?.blink_gap;
+  const blinkRate = blink && Number.isFinite(blink.rate) ? blink.rate : savedBlink?.blinks_per_minute;
+  const blinkGaps = (events ?? []).map((event) => (typeof event.blink_gap === "number" ? event.blink_gap : null));
+  const hasBlinks = blinkGaps.some((gap) => gap != null);
+  const blinkMax = hasBlinks ? Math.max(10, ...blinkGaps.filter((gap): gap is number => gap != null)) : 10;
+  const blinkTop = Math.ceil(blinkMax);
   const percent = summary?.percent === null || summary?.percent === undefined ? "—" : `${summary.percent}%`;
   const percentTone =
     summary?.percent === null || summary?.percent === undefined
@@ -207,7 +233,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
           <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Device id</p>
           <h1 className="mt-1 text-4xl break-all text-foreground sm:text-5xl">{deviceId}</h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            The last 10 minutes of scores. The chart asks Tiger Data every second. A new point is saved after four frames, about twice as often as an eight-frame sheet.
+            The last 10 minutes, checked every second. Posture and blinks are saved together after each score.
           </p>
         </div>
         <FootageToggle />
@@ -255,34 +281,72 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
             <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
               <h2 className="text-sm font-semibold text-muted-foreground">Since last blink</h2>
               <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
-                {blink && Number.isFinite(blink.gap) ? `${blink.gap} s` : "—"}
+                {typeof blinkGap === "number" ? `${blinkGap.toFixed(1)} s` : "—"}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">Over 5 seconds is the fast beep. The board screen does not show this.</p>
             </article>
             <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
               <h2 className="text-sm font-semibold text-muted-foreground">Blinks this minute</h2>
               <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
-                {blink && Number.isFinite(blink.rate) ? blink.rate : "—"}
+                {typeof blinkRate === "number" ? blinkRate : "—"}
               </p>
-              <p className="mt-1 text-sm text-muted-foreground">From the latest sheet.</p>
+              <p className="mt-1 text-sm text-muted-foreground">From the latest saved score.</p>
             </article>
           </section>
 
-          <section className="rounded-2xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:px-5">
-            <div className="mb-2 flex flex-col gap-1 px-1">
-              <h2 className="text-2xl text-foreground">Posture</h2>
-              <p className="text-sm text-muted-foreground">1 is collapsed. 100 is upright. The mark at 60 is poor posture.</p>
-            </div>
-            {events && events.length === 0 ? (
-              <div className="flex min-h-48 flex-col items-start justify-center rounded-xl bg-muted/70 px-5 py-8">
-                <p className="font-heading text-2xl text-foreground">No scores yet</p>
-                <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                  Nothing for {deviceId} in the last 10 minutes. A new score shows up here within a second of the ESP32 saving it.
-                </p>
+          <section className="grid gap-4 lg:grid-cols-2">
+            <article className="rounded-2xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:px-5">
+              <div className="mb-2 flex flex-col gap-1 px-1">
+                <h2 className="text-2xl text-foreground">Posture</h2>
+                <p className="text-sm text-muted-foreground">1 is collapsed. 100 is upright. The mark at 60 is poor posture.</p>
               </div>
-            ) : (
-              <PostureScoreChart events={events ?? []} />
-            )}
+              {events && events.length === 0 ? (
+                <div className="flex min-h-48 flex-col items-start justify-center rounded-xl bg-muted/70 px-5 py-8">
+                  <p className="font-heading text-2xl text-foreground">No scores yet</p>
+                  <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+                    Nothing for {deviceId} in the last 10 minutes. A new score shows up here within a second of the ESP32 saving it.
+                  </p>
+                </div>
+              ) : (
+                <SeriesChart
+                  times={(events ?? []).map((event) => event.time)}
+                  values={(events ?? []).map((event) => event.posture ?? 0)}
+                  yMax={100}
+                  ticks={[100, 60, 0]}
+                  mark={60}
+                  yLabel="Score"
+                  strokeClass="text-primary"
+                  ariaLabel="Posture score from 1 to 100 over the last 10 minutes"
+                  title="Posture score, 1 to 100"
+                />
+              )}
+            </article>
+            <article className="rounded-2xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:px-5">
+              <div className="mb-2 flex flex-col gap-1 px-1">
+                <h2 className="text-2xl text-foreground">Blinks</h2>
+                <p className="text-sm text-muted-foreground">Seconds since the last blink. The mark at 5 is the fast beep.</p>
+              </div>
+              {hasBlinks ? (
+                <SeriesChart
+                  times={(events ?? []).map((event) => event.time)}
+                  values={blinkGaps}
+                  yMax={blinkTop}
+                  ticks={[...new Set([blinkTop, 5, 0])].sort((a, b) => b - a)}
+                  mark={5}
+                  yLabel="Seconds"
+                  strokeClass="text-bad"
+                  ariaLabel="Seconds since the last blink over the last 10 minutes"
+                  title="Seconds since the last blink"
+                />
+              ) : (
+                <div className="flex min-h-48 flex-col items-start justify-center rounded-xl bg-muted/70 px-5 py-8">
+                  <p className="font-heading text-2xl text-foreground">No blink times yet</p>
+                  <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+                    Blink times are saved with each new score. Older points on this chart only have posture.
+                  </p>
+                </div>
+              )}
+            </article>
           </section>
         </>
       ) : null}

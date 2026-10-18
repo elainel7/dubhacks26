@@ -78,6 +78,15 @@ ORDER BY time ASC
 LIMIT 600
 """
 
+LIVE_SQL_BLINK = """
+SELECT time, label, confidence, blink_gap, blinks_per_minute
+FROM posture_events
+WHERE user_id = %s
+  AND time >= now() - INTERVAL '10 minutes'
+ORDER BY time ASC
+LIMIT 600
+"""
+
 BAD_LABEL_SQL = """
 SELECT label
 FROM posture_events
@@ -94,6 +103,16 @@ INSERT INTO posture_events (time, user_id, label, confidence)
 VALUES (%s, %s, %s, %s)
 RETURNING time, user_id, label, confidence
 """
+
+INSERT_SQL_BLINK = """
+INSERT INTO posture_events (time, user_id, label, confidence, blink_gap, blinks_per_minute)
+VALUES (%s, %s, %s, %s, %s, %s)
+RETURNING time, user_id, label, confidence
+"""
+
+# None until the first request tries to add the columns. False keeps the old
+# insert working when the database user cannot alter the table.
+_blink_store: bool | None = None
 
 
 def percent_good(good: int, samples: int) -> float | None:
@@ -131,6 +150,8 @@ class PostureEventIn(BaseModel):
     user_id: str = Field(min_length=1)
     label: str = Field(min_length=1)
     confidence: float = Field(ge=0, le=1)
+    blink_gap: float | None = Field(default=None, ge=0, le=600)
+    blinks_per_minute: int | None = Field(default=None, ge=0, le=300)
 
     @field_validator("user_id", "label", mode="before")
     @classmethod
@@ -159,6 +180,8 @@ class LiveEvent(BaseModel):
     label: str
     confidence: float | None
     posture: int | None
+    blink_gap: float | None = None
+    blinks_per_minute: int | None = None
 
 
 class LiveResponse(BaseModel):
@@ -210,12 +233,45 @@ def fetch_summary(conn, user_id: str, hours: float) -> dict:
     }
 
 
+def blink_columns(conn) -> bool:
+    """Add blink columns once. A database that cannot alter keeps saving posture."""
+    global _blink_store
+    if _blink_store is not None:
+        return _blink_store
+    try:
+        with conn.cursor() as cur:
+            cur.execute("ALTER TABLE posture_events ADD COLUMN IF NOT EXISTS blink_gap double precision")
+            cur.execute("ALTER TABLE posture_events ADD COLUMN IF NOT EXISTS blinks_per_minute integer")
+        conn.commit()
+        _blink_store = True
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        _blink_store = False
+    return _blink_store
+
+
 def insert_event(conn, event: PostureEventIn) -> dict:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute(
-            INSERT_SQL,
-            (event.time, event.user_id, event.label, event.confidence),
-        )
+        if blink_columns(conn):
+            cur.execute(
+                INSERT_SQL_BLINK,
+                (
+                    event.time,
+                    event.user_id,
+                    event.label,
+                    event.confidence,
+                    event.blink_gap,
+                    event.blinks_per_minute,
+                ),
+            )
+        else:
+            cur.execute(
+                INSERT_SQL,
+                (event.time, event.user_id, event.label, event.confidence),
+            )
         row = cur.fetchone()
     conn.commit()
     return {
@@ -228,18 +284,22 @@ def insert_event(conn, event: PostureEventIn) -> dict:
 
 def fetch_live(conn, user_id: str) -> list[dict]:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute(LIVE_SQL, (user_id,))
+        cur.execute(LIVE_SQL_BLINK if blink_columns(conn) else LIVE_SQL, (user_id,))
         rows = cur.fetchall()
     events = []
     for row in rows:
         confidence = _as_float(row["confidence"])
         posture = None if confidence is None else max(0, min(100, round(confidence * 100)))
+        gap = _as_float(row["blink_gap"]) if "blink_gap" in row else None
+        rate = row.get("blinks_per_minute") if isinstance(row, dict) else None
         events.append(
             {
                 "time": row["time"],
                 "label": row["label"],
                 "confidence": confidence,
                 "posture": posture,
+                "blink_gap": gap,
+                "blinks_per_minute": None if rate is None else int(rate),
             }
         )
     return events
