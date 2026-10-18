@@ -142,6 +142,7 @@ export async function connectEsp32(
   let resentWhileWaiting = false;
   let idleLatched = false;
   let sheet = 0;
+  let countSheetOk = true;
   const waiters: Waiter[] = [];
   const inbox: EspLine[] = [];
 
@@ -163,6 +164,7 @@ export async function connectEsp32(
 
   function pushLine(line: EspLine) {
     onLine(line);
+    if (line.kind === "error" && (line.text === "bad frame" || line.text === "partial")) countSheetOk = false;
     if (line.kind === "ready" || line.kind === "device" || line.kind === "idle" || line.kind === "ok") markHeard();
     if (line.kind === "idle") idleLatched = true;
     if (line.kind === "ready" && waitingForOk && lastPacket && !resentWhileWaiting) {
@@ -256,7 +258,8 @@ export async function connectEsp32(
       } finally {
         waitingForOk = false;
       }
-      sheet += 1;
+      if (countSheetOk) sheet += 1;
+      else countSheetOk = true;
       if (sheet < 8) return;
       sheet = 0;
       const scoringStarted = Date.now();

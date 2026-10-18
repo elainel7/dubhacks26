@@ -29,6 +29,7 @@
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <esp_log.h>
 
 #include "jpeg_gray.h"
 #include "perch_alerts.h"
@@ -199,6 +200,14 @@ void startBuzz(PerchBuzz buzz) {
   buzzing = true;
 }
 
+void silenceBuzz() {
+  digitalWrite(kBuzzerPin, LOW);
+  buzzing = false;
+  buzzIndex = 0;
+  buzzLen = 0;
+  buzzUntil = 0;
+}
+
 void serviceBuzz() {
   if (!buzzing) {
     digitalWrite(kBuzzerPin, LOW);
@@ -261,7 +270,7 @@ void showStatus() {
     return;
   }
   if (!wifiUp) {
-    paintLcd("Wi-Fi down", PERCH_DEVICE_ID);
+    paintLcd("Wi-Fi down", PERCH_WIFI_SSID);
     return;
   }
   if (alerts.phase == kPhaseNoFace) {
@@ -551,8 +560,10 @@ void printScore(bool face, int blinks, int posture, const char* head, const char
 }
 
 void scoreSheet() {
+  silenceBuzz();
   Serial.println("scoring a contact sheet.");
-  if (!wifiUp) {
+  if (WiFi.status() != WL_CONNECTED) {
+    wifiUp = false;
     sayError("wifi");
     Serial.println("not saved to Tiger Data. the ESP32 is not on Wi-Fi.");
     releaseHost();
@@ -610,22 +621,19 @@ void scoreSheet() {
     return;
   }
 
-  ensureClock();
-  IPAddress perceptronIp;
-  if (!WiFi.hostByName("api.perceptron.inc", perceptronIp)) {
+  silenceBuzz();
+  if (WiFi.status() != WL_CONNECTED) {
     freeScratch();
-    Serial.println("not saved to Tiger Data. this Wi-Fi has no internet.");
-    sayError("wifi has no internet");
+    wifiUp = false;
+    sayError("wifi");
+    Serial.println("not saved to Tiger Data. the ESP32 is not on Wi-Fi.");
     releaseHost();
     return;
   }
+  ensureClock();
 
   String response;
-  int code = -1;
-  for (int attempt = 0; attempt < 2 && code < 0; attempt++) {
-    if (attempt) delay(400);
-    code = postJson("https://api.perceptron.inc/v1/chat/completions", body, used, true, &response, 20000);
-  }
+  int code = postJson("https://api.perceptron.inc/v1/chat/completions", body, used, true, &response, 12000);
   freeScratch();
   if (code != 200) {
     char message[96];
@@ -740,9 +748,19 @@ void feed(uint8_t byte) {
   acceptFrame();
 }
 
+void beginWifi() {
+  if (PERCH_WIFI_PASSWORD[0] == '\0') WiFi.begin(PERCH_WIFI_SSID);
+  else WiFi.begin(PERCH_WIFI_SSID, PERCH_WIFI_PASSWORD);
+}
+
 void connectWifi() {
+  esp_log_level_set("wifi", ESP_LOG_NONE);
+  WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(PERCH_WIFI_SSID, PERCH_WIFI_PASSWORD);
+  WiFi.setAutoReconnect(false);
+  WiFi.disconnect(false, false);
+  delay(100);
+  beginWifi();
   lastWifiTryMs = millis();
   wifiUp = false;
   wifiNoted = false;
@@ -810,7 +828,8 @@ void loop() {
     Serial.println("error partial");
     Serial.println("ok");
   }
-  if (WiFi.status() == WL_CONNECTED) {
+  wl_status_t wifiStatus = WiFi.status();
+  if (wifiStatus == WL_CONNECTED) {
     if (!wifiUp) {
       wifiUp = true;
       configTime(0, 0, "pool.ntp.org");
@@ -818,13 +837,15 @@ void loop() {
     }
   } else {
     wifiUp = false;
-    if (!wifiNoted && rxState == kWait0 && now - lastWifiTryMs > 12000) {
+    bool stillConnecting = wifiStatus == WL_IDLE_STATUS && now - lastWifiTryMs < 20000;
+    if (!wifiNoted && !stillConnecting && now - lastWifiTryMs > 12000) {
       wifiNoted = true;
       sayError("wifi");
       Serial.println("not saved to Tiger Data. the ESP32 is not on Wi-Fi.");
     }
-    if (rxState == kWait0 && now - lastWifiTryMs > 15000) {
-      WiFi.reconnect();
+    if (!stillConnecting && rxState == kWait0 && now - lastWifiTryMs > 20000) {
+      WiFi.disconnect(false, false);
+      beginWifi();
       lastWifiTryMs = now;
     }
   }

@@ -757,6 +757,7 @@
     let lastLine = "";
     let idleLatched = false;
     let sheetCount = 0;
+    let countSheetOk = true;
     let sawBytes = false;
     let reopenStarted = false;
 
@@ -825,6 +826,7 @@
 
     function handleBoardLine(line) {
       const text = line.trim();
+      if (/^[EWID] \(\d+\) /.test(text)) return;
       if (text) lastLine = text;
       if (text === "idle") idleLatched = true;
       if (text === "ready" || text === "idle" || text === "ok" || text.startsWith("device ")) boardReady = true;
@@ -834,7 +836,11 @@
       }
       if (text === "ok" && okWaiter) okWaiter();
       else if (text.startsWith("device ")) noteDevice(text.slice(7));
-      else if (text.startsWith("error ")) setFootage(footageCollecting, boardError(text.slice(6).trim()));
+      else if (text.startsWith("error ")) {
+        const detail = text.slice(6).trim();
+        if (detail === "bad frame" || detail === "partial") countSheetOk = false;
+        setFootage(footageCollecting, boardError(detail));
+      }
       else if (text.startsWith("note ")) showBoard(text.slice(5).trim());
       else if (
         text &&
@@ -1013,7 +1019,8 @@
             await footageWriter.write(packet.subarray(offset, Math.min(packet.length, offset + 512)));
           }
           await pending;
-          sheetCount += 1;
+          if (countSheetOk) sheetCount += 1;
+          else countSheetOk = true;
           if (sheetCount >= 8) {
             sheetCount = 0;
             const scoringStarted = performance.now();
