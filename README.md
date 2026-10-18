@@ -45,7 +45,7 @@ Open [http://localhost:43123](http://localhost:43123) in Chrome or Edge. Pull th
 
 ## ESP32
 
-The firmware lives at `esp32/perch_esp32/perch_esp32.ino`. On GitHub that folder is in [elainel7/dubhacks26](https://github.com/elainel7/dubhacks26) and [tiredwren/dubhacks2026](https://github.com/tiredwren/dubhacks2026). A push to `main` on dubhacks26 is mirrored onto dubhacks2026, so both repos stay on the same commit.
+The firmware lives at `esp32/perch_esp32/perch_esp32.ino`. On GitHub that folder is in [tiredwren/dubhacks2026](https://github.com/tiredwren/dubhacks2026).
 
 1. Install Arduino IDE 2 and, in Boards Manager, the **esp32** package by Espressif.
 2. **File → Open** and choose `esp32/perch_esp32/perch_esp32.ino`. The IDE loads `jpeg_gray` and `perch_alerts` from that same folder. Leave `esp32/tests/` alone. Those files are host checks, not part of the sketch.
