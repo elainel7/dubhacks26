@@ -5,7 +5,9 @@ import type { LeaderboardSnapshot } from "@/lib/points";
 
 const POLL_MS = 30_000;
 
-export function Leaderboard() {
+export function Leaderboard({ heading = "page" }: { heading?: "page" | "section" }) {
+  const Title = heading === "section" ? "h2" : "h1";
+  const titleClass = heading === "section" ? "text-2xl text-foreground" : "text-3xl text-foreground sm:text-4xl";
   const [board, setBoard] = useState<LeaderboardSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,9 +52,9 @@ export function Leaderboard() {
   return (
     <section className="flex flex-col gap-4" aria-labelledby="board-title">
       <div className="max-w-xl">
-        <h1 id="board-title" className="text-3xl text-foreground sm:text-4xl">
+        <Title id="board-title" className={titleClass}>
           Leaderboard
-        </h1>
+        </Title>
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">
           Top desks by points over the last 7 days. A name is the display name on file, or the device id when there
           isn&apos;t one.

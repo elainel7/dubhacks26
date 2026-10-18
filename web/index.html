@@ -128,7 +128,7 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 12px;
-      margin-bottom: 12px;
+      margin: 12px 0;
     }
     .summary-stats article, .chart-panel {
       background: var(--card);
@@ -245,7 +245,7 @@
       color: var(--muted);
       font-size: 0.92rem;
     }
-    .points-card { margin-bottom: 12px; }
+    .chart-panel { margin-bottom: 12px; }
     .points-head {
       display: flex;
       flex-wrap: wrap;
@@ -266,6 +266,7 @@
       grid-template-columns: repeat(3, 1fr);
       gap: 12px;
     }
+    .blink-stats .points-grid { grid-template-columns: repeat(2, 1fr); }
     .points-grid article {
       background: var(--soft);
       border-radius: 4px;
@@ -334,7 +335,7 @@
     #points-status.is-error, #board-status.is-error { color: var(--bad); font-weight: 700; }
     @media (max-width: 720px) {
       main { padding: 20px 16px 48px; }
-      .summary-stats, .points-grid { grid-template-columns: 1fr; }
+      .summary-stats, .points-grid, .blink-stats .points-grid { grid-template-columns: 1fr; }
       .summary-stats p { font-size: 2rem; }
       .device-controls { align-items: stretch; }
       label, select, button { width: 100%; }
@@ -367,20 +368,6 @@
       <button id="footage" type="button" aria-pressed="false">Start camera</button>
       <p id="footage-error" hidden></p>
     </div>
-    <section class="summary-stats" aria-label="Posture summary">
-      <article>
-        <h2>Percent upright</h2>
-        <p id="percent">—</p>
-      </article>
-      <article>
-        <h2>Most common problem</h2>
-        <p id="bad-label">—</p>
-      </article>
-      <article>
-        <h2>Good and bad samples</h2>
-        <p id="samples">—</p>
-      </article>
-    </section>
     <section class="points-card chart-panel" aria-label="Points">
       <div class="points-head">
         <h2>Points</h2>
@@ -404,24 +391,6 @@
           <h3>Streak</h3>
           <p id="streak-stat" class="points-stat">—</p>
           <p id="streak-meta" class="points-meta">Flow multiplier and day streak</p>
-        </article>
-      </div>
-    </section>
-    <section class="points-card chart-panel" aria-label="Blinks">
-      <div class="points-head">
-        <h2>Blinks</h2>
-        <p>The timer resets when your eyes open. Over 5 seconds is the fast beep.</p>
-      </div>
-      <div class="points-grid">
-        <article>
-          <h3>Since last blink</h3>
-          <p id="blink-gap" class="points-stat">—</p>
-          <p class="points-meta">Over 5 seconds is the fast beep</p>
-        </article>
-        <article>
-          <h3>Blinks this minute</h3>
-          <p id="blink-rate" class="points-stat">—</p>
-          <p class="points-meta">From the latest sheet</p>
         </article>
       </div>
     </section>
@@ -462,6 +431,38 @@
         </div>
       </div>
       <p id="status" role="status"></p>
+    </section>
+    <section class="summary-stats" aria-label="Posture summary">
+      <article>
+        <h2>Percent upright</h2>
+        <p id="percent">—</p>
+      </article>
+      <article>
+        <h2>Most common problem</h2>
+        <p id="bad-label">—</p>
+      </article>
+      <article>
+        <h2>Good and bad samples</h2>
+        <p id="samples">—</p>
+      </article>
+    </section>
+    <section class="points-card chart-panel blink-stats" aria-label="Blinks">
+      <div class="points-head">
+        <h2>Blinks</h2>
+        <p>The timer resets when your eyes open. Over 5 seconds is the fast beep.</p>
+      </div>
+      <div class="points-grid">
+        <article>
+          <h3>Since last blink</h3>
+          <p id="blink-gap" class="points-stat">—</p>
+          <p class="points-meta">Over 5 seconds is the fast beep</p>
+        </article>
+        <article>
+          <h3>Blinks this minute</h3>
+          <p id="blink-rate" class="points-stat">—</p>
+          <p class="points-meta">From the latest sheet</p>
+        </article>
+      </div>
     </section>
     <section class="chart-panel" aria-labelledby="board-title">
       <div class="chart-heading">

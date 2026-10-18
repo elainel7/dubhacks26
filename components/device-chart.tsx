@@ -3,6 +3,8 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { FootageToggle } from "@/components/footage-toggle";
 import { getFootageServerSnapshot, getFootageSnapshot, subscribeFootage } from "@/components/footage-session";
+import { Leaderboard } from "@/components/leaderboard-list";
+import { PointsPanel } from "@/components/points-panel";
 import { shownGapAt } from "@/vision/blink-track";
 import { rememberDevice } from "@/components/site-nav";
 
@@ -265,6 +267,8 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
         <FootageToggle />
       </div>
 
+      <PointsPanel deviceId={deviceId} />
+
       {error ? (
         <div role="alert" className="rounded-2xl border border-bad/30 bg-card px-5 py-4">
           <h2 className="text-xl text-foreground">Could not load this device id</h2>
@@ -280,46 +284,6 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
 
       {summary ? (
         <>
-          <section aria-label="Posture summary" className="grid gap-3 sm:grid-cols-3">
-            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
-              <h2 className="text-sm font-semibold text-muted-foreground">Percent upright</h2>
-              <p className={`mt-2 font-heading text-4xl tabular-nums ${percentTone}`}>{percent}</p>
-            </article>
-            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
-              <h2 className="text-sm font-semibold text-muted-foreground">Good and bad scores</h2>
-              <p className="mt-2 font-heading text-3xl leading-tight">
-                <span className="text-good tabular-nums">{summary.good}</span>
-                <span className="font-sans text-base font-medium text-muted-foreground"> good</span>
-                <span className="text-muted-foreground"> · </span>
-                <span className="text-bad tabular-nums">{summary.bad}</span>
-                <span className="font-sans text-base font-medium text-muted-foreground"> bad</span>
-              </p>
-            </article>
-            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
-              <h2 className="text-sm font-semibold text-muted-foreground">Most common problem</h2>
-              <p className="mt-2 font-heading text-3xl leading-tight text-foreground">
-                {summary.problem ? formatPostureLabel(summary.problem) : "None"}
-              </p>
-            </article>
-          </section>
-
-          <section aria-label="Blinks" className="grid gap-3 sm:grid-cols-2">
-            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
-              <h2 className="text-sm font-semibold text-muted-foreground">Since last blink</h2>
-              <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
-                {typeof blinkGap === "number" ? `${blinkGap.toFixed(1)} s` : "—"}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">Resets when your eyes open. Over 5 seconds is the fast beep.</p>
-            </article>
-            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
-              <h2 className="text-sm font-semibold text-muted-foreground">Blinks this minute</h2>
-              <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
-                {typeof blinkRate === "number" ? blinkRate : "—"}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">From the latest saved score.</p>
-            </article>
-          </section>
-
           <section className="grid gap-4 lg:grid-cols-2">
             <article className="rounded-2xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:px-5">
               <div className="mb-2 flex flex-col gap-1 px-1">
@@ -374,8 +338,50 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
               )}
             </article>
           </section>
+
+          <section aria-label="Posture summary" className="grid gap-3 sm:grid-cols-3">
+            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
+              <h2 className="text-sm font-semibold text-muted-foreground">Percent upright</h2>
+              <p className={`mt-2 font-heading text-4xl tabular-nums ${percentTone}`}>{percent}</p>
+            </article>
+            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
+              <h2 className="text-sm font-semibold text-muted-foreground">Good and bad scores</h2>
+              <p className="mt-2 font-heading text-3xl leading-tight">
+                <span className="text-good tabular-nums">{summary.good}</span>
+                <span className="font-sans text-base font-medium text-muted-foreground"> good</span>
+                <span className="text-muted-foreground"> · </span>
+                <span className="text-bad tabular-nums">{summary.bad}</span>
+                <span className="font-sans text-base font-medium text-muted-foreground"> bad</span>
+              </p>
+            </article>
+            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
+              <h2 className="text-sm font-semibold text-muted-foreground">Most common problem</h2>
+              <p className="mt-2 font-heading text-3xl leading-tight text-foreground">
+                {summary.problem ? formatPostureLabel(summary.problem) : "None"}
+              </p>
+            </article>
+          </section>
+
+          <section aria-label="Blinks" className="grid gap-3 sm:grid-cols-2">
+            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
+              <h2 className="text-sm font-semibold text-muted-foreground">Since last blink</h2>
+              <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
+                {typeof blinkGap === "number" ? `${blinkGap.toFixed(1)} s` : "—"}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">Resets when your eyes open. Over 5 seconds is the fast beep.</p>
+            </article>
+            <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
+              <h2 className="text-sm font-semibold text-muted-foreground">Blinks this minute</h2>
+              <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
+                {typeof blinkRate === "number" ? blinkRate : "—"}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">From the latest saved score.</p>
+            </article>
+          </section>
         </>
       ) : null}
+
+      <Leaderboard heading="section" />
     </div>
   );
 }

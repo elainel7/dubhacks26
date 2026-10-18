@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { DeviceChart } from "@/components/device-chart";
-import { PointsPanel } from "@/components/points-panel";
 import { SiteNav } from "@/components/site-nav";
 import { normalizeDeviceId } from "@/lib/device-id";
 
@@ -39,10 +38,7 @@ async function DeviceBody({ params }: DevicePageProps) {
   if (!deviceId) notFound();
 
   return (
-    <div className="flex flex-col gap-10">
-      <DeviceChart deviceId={deviceId} />
-      <PointsPanel deviceId={deviceId} />
-    </div>
+    <DeviceChart deviceId={deviceId} />
   );
 }
 
