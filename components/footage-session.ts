@@ -17,6 +17,7 @@ export type FootageState = {
   collecting: boolean;
   starting: boolean;
   error: string | null;
+  boardLine: string | null;
   deviceId: string | null;
   liveScore: LiveScore | null;
 };
@@ -25,6 +26,7 @@ const serverSnapshot: FootageState = {
   collecting: false,
   starting: false,
   error: null,
+  boardLine: null,
   deviceId: null,
   liveScore: null,
 };
@@ -163,6 +165,8 @@ export async function startFootage() {
         if (!id) return;
         rememberDevice(id);
         emit({ ...state, deviceId: id });
+      } else if ((line.kind === "note" || line.kind === "other") && line.text) {
+        emit({ ...state, boardLine: line.text });
       } else if (line.kind === "score") {
         emit({
           ...state,

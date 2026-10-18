@@ -35,6 +35,9 @@ export function FootageToggle() {
       >
         {footage.collecting ? "Collecting footage" : "Not collecting footage"}
       </Button>
+      {footage.boardLine ? (
+        <p className="max-w-sm text-sm text-muted-foreground">{footage.boardLine}</p>
+      ) : null}
       {footage.error ? (
         <p role="alert" className="max-w-sm text-sm font-medium text-bad">
           {footage.error}

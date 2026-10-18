@@ -29,7 +29,7 @@ PerchStep clock_only(PerchState state, uint32_t now) {
       step.state.breakUntil = 0;
       step.state.lastBreakStartedAt = state.breakUntil;
       step.state.lastBlinkAt = state.breakUntil;
-      step.note = "Break over.";
+      step.note = "break over.";
     }
     return step;
   }
@@ -38,7 +38,7 @@ PerchStep clock_only(PerchState state, uint32_t now) {
     step.state.breakUntil = now + kBreakDurationMs;
     step.state.badPostureStreak = 0;
     step.buzz = kBuzzBreak;
-    step.note = "Look away from the screen for 20 seconds.";
+    step.note = "time for a break! look away for 20 seconds.";
     return step;
   }
   if (state.phase != kPhaseLive) return step;
@@ -55,13 +55,13 @@ PerchStep remind(PerchState state, uint32_t now) {
   if (now - state.lastBlinkAt >= static_cast<uint32_t>(kBlinkGapMs)) {
     state.lastBlinkAlertAt = now;
     state.blinkAlertSet = true;
-    return PerchStep{state, kBuzzBlink, "You've been staring."};
+    return PerchStep{state, kBuzzBlink, "looking at screen for too long!"};
   }
   if (now - state.lastBreakStartedAt >= static_cast<uint32_t>(kBlinkRateAfterMs) &&
       state.blinksPerMinute < kBlinksPerMinute) {
     state.lastBlinkAlertAt = now;
     state.blinkAlertSet = true;
-    return PerchStep{state, kBuzzBlink, "Under 20 blinks in the last minute."};
+    return PerchStep{state, kBuzzBlink, "not blinking enough!"};
   }
   return quiet;
 }
@@ -100,7 +100,7 @@ PerchStep perch_apply(PerchState state, PerchReading reading, uint32_t now) {
   if (!reading.faceVisible) {
     due.state.phase = kPhaseNoFace;
     due.state.postureScore = -1;
-    due.note = "Step into frame.";
+    due.note = "step into frame.";
     return due;
   }
   if (reading.blinkCount > 0) {
@@ -126,11 +126,11 @@ PerchStep perch_apply(PerchState state, PerchReading reading, uint32_t now) {
     due.state.postureAlertSet = true;
     due.state.badPostureStreak = 0;
     due.buzz = kBuzzPosture;
-    due.note = "Sit up. Shoulders back, head over them.";
+    due.note = "sit up!";
     return due;
   }
   if (reading.degraded) {
-    due.note = "That window was too long to trust a blink count.";
+    due.note = "that sheet was too slow to count blinks.";
     return due;
   }
   due.note = "";

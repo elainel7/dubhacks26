@@ -223,6 +223,12 @@
       font-size: 0.92rem;
       font-weight: 700;
     }
+    #footage-status {
+      flex-basis: 100%;
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
     .footnote {
       margin: 22px 0 0;
       color: var(--muted);
@@ -356,6 +362,7 @@
       </label>
       <button id="refresh" type="button">Refresh</button>
       <button id="footage" type="button" aria-pressed="false">Not collecting footage</button>
+      <p id="footage-status" hidden></p>
       <p id="footage-error" hidden></p>
     </div>
     <section class="summary-stats" aria-label="Posture summary">
@@ -725,6 +732,7 @@
     document.querySelector("#refresh").addEventListener("click", () => load());
 
     const footageButton = document.querySelector("#footage");
+    const footageStatus = document.querySelector("#footage-status");
     const footageError = document.querySelector("#footage-error");
     const FRAME_W = 96;
     const FRAME_H = 72;
@@ -737,6 +745,9 @@
     let footageChosen = null;
     let okWaiter = null;
     let failWaiter = null;
+    let boardReady = false;
+    let lastPacket = null;
+    let resentWhileWaiting = false;
 
     function crc16(bytes) {
       let crc = 0xffff;
@@ -780,6 +791,11 @@
       footageError.textContent = error || "";
     }
 
+    function showBoard(text) {
+      footageStatus.hidden = !text;
+      footageStatus.textContent = text || "";
+    }
+
     function noteDevice(id) {
       const clean = String(id || "").trim();
       if (!/^[A-Za-z0-9_-]{1,80}$/.test(clean)) return;
@@ -798,9 +814,29 @@
 
     function handleBoardLine(line) {
       const text = line.trim();
+      if (text === "ready" || text === "idle" || text === "ok" || text.startsWith("device ")) boardReady = true;
+      if (text === "ready" && okWaiter && lastPacket && footageWriter && !resentWhileWaiting) {
+        resentWhileWaiting = true;
+        footageWriter.write(lastPacket).catch(() => {});
+      }
       if (text === "ok" && okWaiter) okWaiter();
       else if (text.startsWith("device ")) noteDevice(text.slice(7));
       else if (text.startsWith("error ")) setFootage(footageCollecting, boardError(text.slice(6).trim()));
+      else if (text.startsWith("note ")) showBoard(text.slice(5).trim());
+      else if (
+        text &&
+        text !== "ok" &&
+        text !== "idle" &&
+        text !== "ready" &&
+        text !== "saved" &&
+        text !== "unsaved" &&
+        !text.startsWith("device ") &&
+        !text.startsWith("error ") &&
+        !text.startsWith("score ") &&
+        !text.startsWith("psram ")
+      ) {
+        showBoard(text);
+      }
     }
 
     async function readBoard() {
@@ -843,7 +879,8 @@
           okWaiter = null;
           failWaiter = null;
           reject(new Error("The ESP32 did not answer."));
-        }, 25000);
+        }, 40000);
+        resentWhileWaiting = false;
         okWaiter = () => {
           window.clearTimeout(timer);
           okWaiter = null;
@@ -887,6 +924,7 @@
       });
       footageButton.disabled = true;
       footageStop = false;
+      boardReady = false;
       try {
         const media = await mediaPromise;
         footageStream = media;
@@ -912,6 +950,12 @@
         canvas.width = FRAME_W;
         canvas.height = FRAME_H;
         setFootage(true, "");
+        const bootStart = performance.now();
+        while (!boardReady) {
+          if (footageStop) return;
+          if (performance.now() - bootStart > 20000) throw new Error("The ESP32 did not answer.");
+          await new Promise((resolve) => window.setTimeout(resolve, 50));
+        }
         while (!footageStop) {
           const gray = grabGray(video, canvas);
           if (!gray) {
@@ -919,8 +963,10 @@
             continue;
           }
           const started = performance.now();
+          const packet = encodeFrame(Date.now(), gray);
+          lastPacket = packet;
           const pending = waitForOk();
-          await footageWriter.write(encodeFrame(Date.now(), gray));
+          await footageWriter.write(packet);
           await pending;
           const rest = 70 - (performance.now() - started);
           if (rest > 0) await new Promise((resolve) => window.setTimeout(resolve, rest));

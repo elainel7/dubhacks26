@@ -104,6 +104,7 @@ static size_t bodyCap = 0;
 static uint8_t* payload = nullptr;
 static bool ready = false;
 static bool wifiUp = false;
+static bool wifiNoted = false;
 static PerchState alerts;
 static uint32_t lastApplyMs = 0;
 static uint32_t lastHelloMs = 0;
@@ -143,6 +144,11 @@ uint32_t readLe32(const uint8_t* bytes) {
 
 void say(const char* text) { Serial.println(text); }
 
+void sayNote(const char* text) {
+  if (!text || !text[0]) return;
+  Serial.println(text);
+}
+
 void sayError(const char* text) {
   Serial.print("error ");
   Serial.println(text);
@@ -157,7 +163,7 @@ void releaseHost() {
 void hello() {
   Serial.print("device ");
   Serial.println(PERCH_DEVICE_ID);
-  Serial.println("idle");
+  Serial.println("ready");
   lastHelloMs = millis();
 }
 
@@ -281,7 +287,7 @@ void beginBreak(uint32_t now) {
   alerts.badPostureStreak = 0;
   lastApplyMs = now;
   startBuzz(kBuzzBreak);
-  Serial.println("note Look away from the screen for 20 seconds.");
+  sayNote("time for a break! look away for 20 seconds.");
 }
 
 void serviceButton() {
@@ -305,10 +311,7 @@ void applyBuzz(PerchStep step) {
   alerts = step.state;
   lastApplyMs = millis();
   if (step.buzz != kBuzzNone) startBuzz(step.buzz);
-  if (step.note && step.note[0]) {
-    Serial.print("note ");
-    Serial.println(step.note);
-  }
+  sayNote(step.note);
 }
 
 uint8_t* allocBuf(size_t bytes) {
@@ -448,12 +451,12 @@ void apiBase(char* out, size_t cap) {
   if (n > 0 && out[n - 1] == '/') out[n - 1] = 0;
 }
 
-int postJson(const char* url, const uint8_t* data, size_t length, bool bearer, String* response) {
+int postJson(const char* url, const uint8_t* data, size_t length, bool bearer, String* response, int timeoutMs) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   if (!http.begin(client, url)) return -1;
-  http.setTimeout(20000);
+  http.setTimeout(timeoutMs);
   http.setConnectTimeout(8000);
   http.useHTTP10(true);
   http.addHeader("Content-Type", "application/json");
@@ -469,14 +472,19 @@ int postJson(const char* url, const uint8_t* data, size_t length, bool bearer, S
 }
 
 void postEvent(bool face, int posture, const char* head) {
-  if (!face) return;
+  if (!face) {
+    Serial.println("not saved to Tiger Data. face is hidden.");
+    return;
+  }
   if (!wifiUp) {
     sayError("wifi");
+    Serial.println("not saved to Tiger Data. the ESP32 is not on Wi-Fi.");
     Serial.println("unsaved");
     return;
   }
   if (!clockReady()) {
     sayError("clock");
+    Serial.println("not saved to Tiger Data. the clock is not set yet.");
     Serial.println("unsaved");
     return;
   }
@@ -501,10 +509,16 @@ void postEvent(bool face, int posture, const char* head) {
   apiBase(base, sizeof(base));
   char url[160];
   snprintf(url, sizeof(url), "%s/events", base);
-  int code = postJson(url, (const uint8_t*)json, strlen(json), false, nullptr);
-  if (code == 200 || code == 201) Serial.println("saved");
-  else {
-    char message[32];
+  Serial.print("posting to Tiger Data. ");
+  Serial.println(json);
+  int code = postJson(url, (const uint8_t*)json, strlen(json), false, nullptr, 8000);
+  if (code == 200 || code == 201) {
+    Serial.println("saved to Tiger Data.");
+    Serial.println("saved");
+  } else {
+    char message[64];
+    snprintf(message, sizeof(message), "not saved to Tiger Data. the API returned %d.", code);
+    Serial.println(message);
     snprintf(message, sizeof(message), "save %d", code);
     sayError(message);
     Serial.println("unsaved");
@@ -522,8 +536,10 @@ void printScore(bool face, int blinks, int posture, const char* head, const char
 }
 
 void scoreSheet() {
+  Serial.println("scoring a contact sheet.");
   if (!wifiUp) {
     sayError("wifi");
+    Serial.println("not saved to Tiger Data. the ESP32 is not on Wi-Fi.");
     releaseHost();
     return;
   }
@@ -580,10 +596,12 @@ void scoreSheet() {
   }
 
   String response;
-  int code = postJson("https://api.perceptron.inc/v1/chat/completions", body, used, true, &response);
+  int code = postJson("https://api.perceptron.inc/v1/chat/completions", body, used, true, &response, 15000);
   freeScratch();
   if (code != 200) {
-    char message[24];
+    char message[72];
+    snprintf(message, sizeof(message), "not saved to Tiger Data. Perceptron returned %d.", code);
+    Serial.println(message);
     snprintf(message, sizeof(message), "perceptron %d", code);
     sayError(message);
     releaseHost();
@@ -597,6 +615,7 @@ void scoreSheet() {
   const char* headAt = afterKey(json, "head");
   const char* shouldersAt = afterKey(json, "shoulders");
   if (!faceAt || !blinksAt || !postureAt || !headAt || !shouldersAt) {
+    Serial.println("not saved to Tiger Data. the score could not be read.");
     sayError("parse");
     releaseHost();
     return;
@@ -621,11 +640,8 @@ void scoreSheet() {
   lastApplyMs = millis();
   printScore(face, blinks, posture, head, shoulders);
   if (step.buzz != kBuzzNone) startBuzz(step.buzz);
-  if (step.note && step.note[0]) {
-    Serial.print("note ");
-    Serial.println(step.note);
-  }
   postEvent(face, posture, head);
+  sayNote(step.note);
   releaseHost();
 }
 
@@ -695,12 +711,9 @@ void feed(uint8_t byte) {
 void connectWifi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(PERCH_WIFI_SSID, PERCH_WIFI_PASSWORD);
-  uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 12000) delay(200);
-  wifiUp = WiFi.status() == WL_CONNECTED;
-  if (wifiUp) configTime(0, 0, "pool.ntp.org");
-  else sayError("wifi");
   lastWifiTryMs = millis();
+  wifiUp = false;
+  wifiNoted = false;
 }
 
 void hardwareHello() {
@@ -743,9 +756,9 @@ void setup() {
     Serial.println("note PSRAM is off. Set Tools > PSRAM to OPI PSRAM and upload again.");
   }
   ready = true;
-  connectWifi();
   alerts = perch_initial(millis());
   hello();
+  connectWifi();
   showStatus();
 }
 
@@ -758,15 +771,23 @@ void loop() {
   while (Serial.available() > 0) feed((uint8_t)Serial.read());
 
   uint32_t now = millis();
-  if (!wifiUp && rxState == kWait0 && now - lastWifiTryMs > 15000) {
-    WiFi.reconnect();
-    lastWifiTryMs = now;
-    wifiUp = WiFi.status() == WL_CONNECTED;
-    if (wifiUp && !clockReady()) configTime(0, 0, "pool.ntp.org");
-  } else if (WiFi.status() == WL_CONNECTED) {
-    wifiUp = true;
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!wifiUp) {
+      wifiUp = true;
+      configTime(0, 0, "pool.ntp.org");
+      Serial.println("Wi-Fi connected.");
+    }
   } else {
     wifiUp = false;
+    if (!wifiNoted && rxState == kWait0 && now - lastWifiTryMs > 12000) {
+      wifiNoted = true;
+      sayError("wifi");
+      Serial.println("not saved to Tiger Data. the ESP32 is not on Wi-Fi.");
+    }
+    if (rxState == kWait0 && now - lastWifiTryMs > 15000) {
+      WiFi.reconnect();
+      lastWifiTryMs = now;
+    }
   }
 
   if (frameCount == 0 && rxState == kWait0 && now - lastHelloMs > 2000) hello();

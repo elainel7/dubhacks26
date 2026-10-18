@@ -1,10 +1,13 @@
 #include "../perch_esp32/perch_alerts.h"
 
 #include <stdio.h>
+#include <string.h>
 
 int main() {
   PerchState state = perch_initial(0);
-  if (perch_tick(state, 5000).buzz != kBuzzBlink) return 1;
+  PerchStep stare = perch_tick(state, 5000);
+  if (stare.buzz != kBuzzBlink) return 1;
+  if (!stare.note || strcmp(stare.note, "looking at screen for too long!") != 0) return 1;
   state = perch_initial(0);
   for (int i = 1; i <= 19; i++) state = perch_note_blink(state, static_cast<uint32_t>(i * 3000)).state;
   PerchStep low = perch_tick(state, 60000);

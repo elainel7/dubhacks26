@@ -46,4 +46,9 @@ test("score, device, and error lines parse", () => {
     kind: "note",
     text: "You've been staring.",
   });
+  assert.equal(parseEspLine("ready").kind, "ready");
+  assert.deepEqual(parseEspLine("looking at screen for too long!"), {
+    kind: "other",
+    text: "looking at screen for too long!",
+  });
 });

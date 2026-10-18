@@ -20,6 +20,7 @@ export type EspLine =
   | { kind: "device"; id: string }
   | { kind: "ok" }
   | { kind: "idle" }
+  | { kind: "ready" }
   | { kind: "saved" }
   | { kind: "unsaved" }
   | { kind: "note"; text: string }
@@ -91,6 +92,7 @@ export function parseEspLine(line: string): EspLine {
   const text = line.trim();
   if (text === "ok") return { kind: "ok" };
   if (text === "idle") return { kind: "idle" };
+  if (text === "ready") return { kind: "ready" };
   if (text === "saved") return { kind: "saved" };
   if (text === "unsaved") return { kind: "unsaved" };
   if (text.startsWith("device ")) return { kind: "device", id: text.slice("device ".length).trim() };
@@ -132,8 +134,20 @@ export async function connectEsp32(
   const decoder = new TextDecoder();
   let buffer = "";
   let stopped = false;
+  let heardBoard = false;
+  let heardResolve: (() => void) | null = null;
+  let lastPacket: Uint8Array | null = null;
+  let waitingForOk = false;
+  let resentWhileWaiting = false;
   const waiters: Waiter[] = [];
   const inbox: EspLine[] = [];
+
+  function markHeard() {
+    if (heardBoard) return;
+    heardBoard = true;
+    heardResolve?.();
+    heardResolve = null;
+  }
 
   function failWaiters(error: Error) {
     while (waiters.length > 0) {
@@ -146,6 +160,13 @@ export async function connectEsp32(
 
   function pushLine(line: EspLine) {
     onLine(line);
+    if (line.kind === "ready" || line.kind === "device" || line.kind === "idle" || line.kind === "ok") markHeard();
+    if (line.kind === "ready" && waitingForOk && lastPacket && !resentWhileWaiting) {
+      resentWhileWaiting = true;
+      void writer.write(lastPacket).catch(() => {
+        /* The port closed while the board was rebooting. */
+      });
+    }
     const index = waiters.findIndex((waiter) => waiter.kind === line.kind);
     if (index >= 0) {
       const [waiter] = waiters.splice(index, 1);
@@ -194,16 +215,40 @@ export async function connectEsp32(
     }
   })();
 
+  function waitUntilHeard() {
+    if (heardBoard) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        heardResolve = null;
+        reject(new Error("The ESP32 did not answer."));
+      }, 20_000);
+      heardResolve = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+  }
+
   return {
     async sendFrame(timestampMs, gray) {
-      const pending = waitFor("ok", 25_000);
+      await waitUntilHeard();
+      const packet = encodeFrame(timestampMs, gray);
+      lastPacket = packet;
+      resentWhileWaiting = false;
+      waitingForOk = true;
+      const pending = waitFor("ok", 40_000);
       try {
-        await writer.write(encodeFrame(timestampMs, gray));
+        await writer.write(packet);
       } catch (cause) {
+        waitingForOk = false;
         failWaiters(cause instanceof Error ? cause : new Error("Could not write to the ESP32."));
         throw cause;
       }
-      await pending;
+      try {
+        await pending;
+      } finally {
+        waitingForOk = false;
+      }
     },
     async close() {
       stopped = true;
