@@ -28,7 +28,7 @@ function reading(overrides: Partial<Reading> = {}): Reading {
   };
 }
 
-test("a stare of 8 seconds buzzes once, then waits out the cooldown", () => {
+test("a stare of 5 seconds buzzes once, then waits out the cooldown", () => {
   const start = 1_000;
   let state = initialAlertState(start);
   const first = applyReading(
@@ -52,6 +52,27 @@ test("a stare of 8 seconds buzzes once, then waits out the cooldown", () => {
     start + BLINK_GAP_MS + COOLDOWN_MS + 1_000,
   );
   assert.equal(later.buzz, "B");
+});
+
+test("a minute under 20 blinks beeps, and 20 blinks stays quiet", () => {
+  let sparse = initialAlertState(0);
+  for (let i = 1; i <= 19; i++) sparse = noteBlink(sparse, i * 3_000).state;
+  const low = tick(sparse, 60_000);
+  assert.equal(low.buzz, "B");
+  assert.equal(low.note, "Under 20 blinks in the last minute.");
+  assert.equal(low.state.blinksPerMinute, 19);
+
+  const held = tick(low.state, 70_000);
+  assert.equal(held.buzz, null);
+
+  let steady = initialAlertState(0);
+  for (let i = 1; i <= 20; i++) steady = noteBlink(steady, i * 2_800).state;
+  const enough = tick(steady, 60_000);
+  assert.equal(enough.buzz, null);
+  assert.equal(enough.state.blinksPerMinute, 20);
+
+  const early = tick(initialAlertState(0), BLINK_GAP_MS);
+  assert.equal(early.note, "You've been staring.");
 });
 
 test("a blink resets the stare clock", () => {

@@ -544,7 +544,7 @@ export function CameraView() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted-foreground">Blinks, last minute</dt>
+                  <dt className="text-xs text-muted-foreground">Blinks / min, aim 20</dt>
                   <dd className="mt-1 font-mono text-3xl tabular-nums">
                     {watching ? metrics.blinksPerMinute : "—"}
                   </dd>

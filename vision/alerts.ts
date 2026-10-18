@@ -1,4 +1,6 @@
-export const BLINK_GAP_MS = 8_000;
+export const BLINK_GAP_MS = 5_000;
+export const BLINKS_PER_MINUTE = 20;
+export const BLINK_RATE_AFTER_MS = 60_000;
 export const POSTURE_BAD_AT = 60;
 export const POSTURE_STREAK = 3;
 export const COOLDOWN_MS = 45_000;
@@ -85,7 +87,7 @@ export function startBreak(state: AlertState, now: number): StepResult {
   };
 }
 
-export function tick(state: AlertState, now: number): StepResult {
+function followClock(state: AlertState, now: number): StepResult {
   if (state.phase === "break") {
     if (state.breakUntil !== null && now >= state.breakUntil) {
       return {
@@ -113,15 +115,51 @@ export function tick(state: AlertState, now: number): StepResult {
   }
 
   const secondsSinceBlink = Math.max(0, (now - state.lastBlinkAt) / 1000);
-  if (Math.abs(secondsSinceBlink - state.secondsSinceBlink) < 0.05) {
+  const { kept, blinksPerMinute } = blinksInLastMinute(state.blinkEvents, now);
+  const countChanged = blinksPerMinute !== state.blinksPerMinute;
+  if (!countChanged && Math.abs(secondsSinceBlink - state.secondsSinceBlink) < 0.05) {
     return { state, buzz: null, note: "" };
   }
 
   return {
-    state: { ...state, secondsSinceBlink },
+    state: { ...state, secondsSinceBlink, blinkEvents: kept, blinksPerMinute },
     buzz: null,
     note: "",
   };
+}
+
+export function tick(state: AlertState, now: number): StepResult {
+  const stepped = followClock(state, now);
+  if (stepped.buzz || stepped.state.phase !== "live") return stepped;
+  return blinkReminder(stepped.state, now) ?? stepped;
+}
+
+function blinkReminder(state: AlertState, now: number): StepResult | null {
+  if (state.phase !== "live") return null;
+  const cooled = state.lastBlinkAlertAt === null || now - state.lastBlinkAlertAt >= COOLDOWN_MS;
+  if (!cooled) return null;
+
+  const { kept, blinksPerMinute } = blinksInLastMinute(state.blinkEvents, now);
+  const counted: AlertState = { ...state, blinkEvents: kept, blinksPerMinute };
+  const secondsSinceBlink = Math.max(0, (now - state.lastBlinkAt) / 1000);
+
+  if (now - state.lastBlinkAt >= BLINK_GAP_MS) {
+    return {
+      state: { ...counted, secondsSinceBlink, lastBlinkAlertAt: now },
+      buzz: "B",
+      note: "You've been staring.",
+    };
+  }
+
+  if (now - state.lastBreakStartedAt >= BLINK_RATE_AFTER_MS && blinksPerMinute < BLINKS_PER_MINUTE) {
+    return {
+      state: { ...counted, secondsSinceBlink, lastBlinkAlertAt: now },
+      buzz: "B",
+      note: "Under 20 blinks in the last minute.",
+    };
+  }
+
+  return null;
 }
 
 /** A blink seen on the camera. Resets the stare clock without waiting for a contact sheet. */
@@ -151,7 +189,7 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
     return { state, buzz: null, note: "" };
   }
 
-  const due = tick(state, now);
+  const due = followClock(state, now);
   if (due.buzz === "R") return due;
 
   if (!reading.faceVisible) {
@@ -192,20 +230,12 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
     shoulders: reading.shoulders,
   };
 
-  const blinkReady =
-    !reading.degraded &&
-    !blinked &&
-    now - lastBlinkAt >= BLINK_GAP_MS &&
-    (next.lastBlinkAlertAt === null || now - next.lastBlinkAlertAt >= COOLDOWN_MS);
+  const reminder = !reading.degraded && !blinked ? blinkReminder(next, now) : null;
+  if (reminder) return reminder;
 
   const postureReady =
     badPostureStreak >= POSTURE_STREAK &&
     (next.lastPostureAlertAt === null || now - next.lastPostureAlertAt >= COOLDOWN_MS);
-
-  if (blinkReady) {
-    next = { ...next, lastBlinkAlertAt: now };
-    return { state: next, buzz: "B", note: "You've been staring." };
-  }
 
   if (postureReady) {
     next = { ...next, lastPostureAlertAt: now, badPostureStreak: 0 };
