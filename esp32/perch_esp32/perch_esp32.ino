@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/time.h>
 
 #include "jpeg_gray.h"
 #include "perch_alerts.h"
@@ -444,6 +445,17 @@ bool clockReady() {
   return now > 1700000000;
 }
 
+void ensureClock() {
+  uint32_t start = millis();
+  while (!clockReady() && millis() - start < 5000) delay(100);
+  if (clockReady()) return;
+  timeval tv;
+  tv.tv_sec = 1792281600;
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+  Serial.println("clock was not set. using a fallback time so Perceptron can connect.");
+}
+
 void apiBase(char* out, size_t cap) {
   strncpy(out, PERCH_API_BASE, cap - 1);
   out[cap - 1] = 0;
@@ -454,12 +466,14 @@ void apiBase(char* out, size_t cap) {
 int postJson(const char* url, const uint8_t* data, size_t length, bool bearer, String* response, int timeoutMs) {
   WiFiClientSecure client;
   client.setInsecure();
+  client.setTimeout(15);
+  client.setHandshakeTimeout(15000);
+  client.setBufferSizes(4096, 1024);
   HTTPClient http;
-  client.setTimeout(12);
   if (!http.begin(client, url)) return -1;
   http.setTimeout(timeoutMs);
-  http.setConnectTimeout(8000);
-  http.useHTTP10(true);
+  http.setConnectTimeout(12000);
+  http.setReuse(false);
   http.addHeader("Content-Type", "application/json");
   if (bearer) {
     char auth[400];
@@ -596,15 +610,33 @@ void scoreSheet() {
     return;
   }
 
+  ensureClock();
+  IPAddress perceptronIp;
+  if (!WiFi.hostByName("api.perceptron.inc", perceptronIp)) {
+    freeScratch();
+    Serial.println("not saved to Tiger Data. this Wi-Fi has no internet.");
+    sayError("wifi has no internet");
+    releaseHost();
+    return;
+  }
+
   String response;
-  int code = postJson("https://api.perceptron.inc/v1/chat/completions", body, used, true, &response, 15000);
+  int code = -1;
+  for (int attempt = 0; attempt < 2 && code < 0; attempt++) {
+    if (attempt) delay(400);
+    code = postJson("https://api.perceptron.inc/v1/chat/completions", body, used, true, &response, 20000);
+  }
   freeScratch();
   if (code != 200) {
-    char message[72];
-    snprintf(message, sizeof(message), "not saved to Tiger Data. Perceptron returned %d.", code);
+    char message[96];
+    snprintf(message, sizeof(message), "not saved to Tiger Data. Perceptron connection failed (%d), free heap %u.", code,
+             ESP.getFreeHeap());
     Serial.println(message);
-    snprintf(message, sizeof(message), "perceptron %d", code);
-    sayError(message);
+    if (code < 0) sayError("could not reach Perceptron");
+    else {
+      snprintf(message, sizeof(message), "perceptron %d", code);
+      sayError(message);
+    }
     releaseHost();
     return;
   }

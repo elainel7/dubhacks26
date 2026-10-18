@@ -101,6 +101,12 @@ function boardErrorText(text: string) {
   if (text === "wifi") {
     return "The ESP32 is not on Wi-Fi. Check the network name in secrets.h. An open network needs an empty password, and the network has to be 2.4 GHz.";
   }
+  if (text === "wifi has no internet") {
+    return "The ESP32 joined Wi-Fi, but that network has no internet. Perceptron cannot be reached. Use a 2.4 GHz network that opens normal websites, with no login page.";
+  }
+  if (text === "could not reach Perceptron" || text.startsWith("perceptron -")) {
+    return "The ESP32 could not open a connection to Perceptron, so nothing was saved. Upload the latest sketch. Use a 2.4 GHz network with internet and no login page.";
+  }
   return text;
 }
 
