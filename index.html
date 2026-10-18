@@ -932,7 +932,9 @@
     let clockTimer = 0;
     let serialChain = Promise.resolve();
     let boardCmdSending = false;
-    let stareChirped = false;
+    let stareChirpIndex = 0;
+    let postureBadSince = null;
+    let lastHonkAskAt = 0;
     const boardCmds = [];
 
     function trackBlink(track, score, now) {
@@ -963,7 +965,10 @@
     function paintBlinkClock() {
       const now = Date.now();
       const gap = blinkGapNow(now);
-      if (gap == null) return;
+      if (gap == null) {
+        remindPosture(now);
+        return;
+      }
       const gapEl = document.querySelector("#blink-gap");
       const rateEl = document.querySelector("#blink-rate");
       if (gapEl) gapEl.textContent = gap.toFixed(1) + " s";
@@ -972,15 +977,31 @@
       if (!blinkWatch.holding && gap >= 5) notes.push("Blink");
       if (postureNeedsSit) notes.push("Sit up taller");
       showReminder(notes);
-      const dueHolding = blinkWatch.holding;
-      if (dueHolding) {
+      if (blinkWatch.holding) {
         /* A held close is not a stare. */
       } else if (gap < 5) {
-        stareChirped = false;
-      } else if (!stareChirped && footageCollecting) {
-        stareChirped = true;
-        queueBoardCmd("chirp\n");
+        stareChirpIndex = 0;
+      } else if (footageCollecting) {
+        const index = Math.floor(gap / 5);
+        if (index > stareChirpIndex) {
+          stareChirpIndex = index;
+          queueBoardCmd("chirp\n");
+        }
       }
+      remindPosture(now);
+    }
+
+    function remindPosture(now) {
+      if (!postureNeedsSit) {
+        postureBadSince = null;
+        return;
+      }
+      if (!footageCollecting) return;
+      if (postureBadSince == null) postureBadSince = now;
+      if (now - postureBadSince < 15000) return;
+      if (now - lastHonkAskAt < 5000) return;
+      lastHonkAskAt = now;
+      queueBoardCmd("honk\n");
     }
 
     function takeBoardGap(gapSeconds, now) {
@@ -1086,7 +1107,9 @@
     function resetBlinkWatch() {
       blinkWatch = { track: { armed: true, shutFrames: 0, lastFireAt: null }, holding: false, frozenGap: null, marks: [] };
       previousBoardGap = null;
-      stareChirped = false;
+      stareChirpIndex = 0;
+      postureBadSince = null;
+      lastHonkAskAt = 0;
       boardCmds.length = 0;
     }
 

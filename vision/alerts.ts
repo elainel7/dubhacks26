@@ -3,6 +3,7 @@ export const BLINKS_PER_MINUTE = 20;
 export const BLINK_RATE_AFTER_MS = 60_000;
 export const POSTURE_BAD_AT = 60;
 export const POSTURE_STREAK = 3;
+export const POSTURE_REPEAT_MS = 15_000;
 export const COOLDOWN_MS = 45_000;
 export const BREAK_EVERY_MS = 20 * 60 * 1000;
 export const BREAK_DURATION_MS = 20_000;
@@ -35,6 +36,7 @@ export type AlertState = {
   badPostureStreak: number;
   lastBlinkAlertAt: number | null;
   lastPostureAlertAt: number | null;
+  postureAlertSet: boolean;
   breakUntil: number | null;
   lastBreakStartedAt: number;
   postureScore: number | null;
@@ -59,6 +61,7 @@ export function initialAlertState(now: number): AlertState {
     badPostureStreak: 0,
     lastBlinkAlertAt: null,
     lastPostureAlertAt: null,
+    postureAlertSet: false,
     breakUntil: null,
     lastBreakStartedAt: now,
     postureScore: null,
@@ -133,9 +136,26 @@ function followClock(state: AlertState, now: number): StepResult {
   };
 }
 
+function postureStillBad(state: AlertState) {
+  return (state.postureScore !== null && state.postureScore <= POSTURE_BAD_AT) || state.head === "forward";
+}
+
+function postureRepeat(state: AlertState, now: number): StepResult | null {
+  if (state.phase !== "live" || !state.postureAlertSet || state.lastPostureAlertAt === null) return null;
+  if (!postureStillBad(state)) return null;
+  if (now - state.lastPostureAlertAt < POSTURE_REPEAT_MS) return null;
+  return {
+    state: { ...state, lastPostureAlertAt: now },
+    buzz: "P",
+    note: "Sit up. Shoulders back, head over them.",
+  };
+}
+
 export function tick(state: AlertState, now: number): StepResult {
   const stepped = followClock(state, now);
   if (stepped.buzz || stepped.state.phase !== "live") return stepped;
+  const posture = postureRepeat(stepped.state, now);
+  if (posture) return posture;
   return blinkReminder(stepped.state, now) ?? stepped;
 }
 
@@ -236,7 +256,7 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
   }
   const { kept, blinksPerMinute } = blinksInLastMinute(events, now);
 
-  const bad = reading.postureScore <= POSTURE_BAD_AT;
+  const bad = reading.postureScore <= POSTURE_BAD_AT || reading.head === "forward";
   const badPostureStreak = bad ? due.state.badPostureStreak + 1 : 0;
 
   let next: AlertState = {
@@ -247,6 +267,7 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
     blinkEvents: kept,
     blinksPerMinute,
     badPostureStreak,
+    postureAlertSet: bad ? due.state.postureAlertSet : false,
     postureScore: reading.postureScore,
     eyesShut,
     head: reading.head,
@@ -256,12 +277,10 @@ export function applyReading(state: AlertState, reading: Reading, now: number): 
   const reminder = !reading.degraded && !eyesShut && reading.blinkCount <= 0 ? blinkReminder(next, now) : null;
   if (reminder) return reminder;
 
-  const postureReady =
-    badPostureStreak >= POSTURE_STREAK &&
-    (next.lastPostureAlertAt === null || now - next.lastPostureAlertAt >= COOLDOWN_MS);
+  const postureReady = badPostureStreak >= POSTURE_STREAK && !next.postureAlertSet;
 
   if (postureReady) {
-    next = { ...next, lastPostureAlertAt: now, badPostureStreak: 0 };
+    next = { ...next, lastPostureAlertAt: now, postureAlertSet: true, badPostureStreak: 0 };
     return { state: next, buzz: "P", note: "Sit up. Shoulders back, head over them." };
   }
 

@@ -177,8 +177,10 @@ export type EspLink = {
   sendFrame: (timestampMs: number, gray: Uint8Array, whileScoring?: () => void) => Promise<void>;
   /** Tell the board the lids just opened, so its stare clock matches the laptop. */
   noteBlink: () => Promise<void>;
-  /** Play the fast blink chirp. Sent once when the laptop stare clock hits 5 seconds. */
+  /** Play the fast blink chirp. Sent at each 5 second mark of an open-eyed stare. */
   noteChirp: () => Promise<void>;
+  /** Play the long sit-up honk. The board ignores one that arrives within 15 seconds of the last. */
+  noteHonk: () => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -362,6 +364,10 @@ export async function connectEsp32(
     noteChirp() {
       if (stopped) return Promise.resolve();
       return writeExclusive(() => writer.write(new TextEncoder().encode("chirp\n"))).then(() => undefined);
+    },
+    noteHonk() {
+      if (stopped) return Promise.resolve();
+      return writeExclusive(() => writer.write(new TextEncoder().encode("honk\n"))).then(() => undefined);
     },
     async close() {
       stopped = true;

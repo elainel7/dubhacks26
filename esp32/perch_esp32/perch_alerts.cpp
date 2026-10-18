@@ -79,9 +79,21 @@ PerchState perch_initial(uint32_t now) {
   return state;
 }
 
+PerchStep posture_repeat(PerchState state, uint32_t now) {
+  PerchStep quiet{state, kBuzzNone, ""};
+  if (state.phase != kPhaseLive || !state.postureAlertSet) return quiet;
+  const bool bad = (state.postureScore >= 0 && state.postureScore <= kPostureBadAt) || state.headForward;
+  if (!bad) return quiet;
+  if (now - state.lastPostureAlertAt < static_cast<uint32_t>(kPostureRepeatMs)) return quiet;
+  state.lastPostureAlertAt = now;
+  return PerchStep{state, kBuzzPosture, "sit up!"};
+}
+
 PerchStep perch_tick(PerchState state, uint32_t now) {
   PerchStep stepped = clock_only(state, now);
   if (stepped.buzz != kBuzzNone || stepped.state.phase != kPhaseLive) return stepped;
+  PerchStep posture = posture_repeat(stepped.state, now);
+  if (posture.buzz != kBuzzNone) return posture;
   PerchStep reminder = remind(stepped.state, now);
   if (reminder.buzz != kBuzzNone) return reminder;
   return stepped;
@@ -133,16 +145,17 @@ PerchStep perch_apply(PerchState state, PerchReading reading, uint32_t now) {
   due.state.postureScore = reading.postureScore;
   due.state.headForward = reading.headForward;
   if (reading.postureScore <= kPostureBadAt || reading.headForward) due.state.badPostureStreak += 1;
-  else due.state.badPostureStreak = 0;
+  else {
+    due.state.badPostureStreak = 0;
+    due.state.postureAlertSet = false;
+  }
 
   if (!reading.degraded && !due.state.eyesShut && reading.blinkCount <= 0) {
     PerchStep reminder = remind(due.state, now);
     if (reminder.buzz != kBuzzNone) return reminder;
   }
 
-  const bool postureReady =
-      due.state.badPostureStreak >= kPostureStreak &&
-      (!due.state.postureAlertSet || now - due.state.lastPostureAlertAt >= static_cast<uint32_t>(kCooldownMs));
+  const bool postureReady = due.state.badPostureStreak >= kPostureStreak && !due.state.postureAlertSet;
   if (postureReady) {
     due.state.lastPostureAlertAt = now;
     due.state.postureAlertSet = true;

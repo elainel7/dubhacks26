@@ -189,6 +189,12 @@ test("three low scores buzz posture, and the cooldown holds", () => {
     6_000,
   );
   assert.equal(third.buzz, null);
+
+  const later = tick(third.state, 3_000 + 15_000);
+  assert.equal(later.buzz, "P");
+  const soon = tick(later.state, 3_000 + 15_000 + 5_000);
+  assert.notEqual(soon.buzz, "P");
+  assert.equal(soon.state.lastPostureAlertAt, later.state.lastPostureAlertAt);
 });
 
 test("a long window does not fire a blink alert", () => {

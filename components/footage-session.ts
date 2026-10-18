@@ -7,6 +7,7 @@ import {
   blinkGapSeconds,
   blinksInLastMinute,
   initialBlinkWatch,
+  postureHonkDue,
   stareChirpDue,
   takeBoardGap,
   watchBlink,
@@ -57,7 +58,9 @@ let stream: MediaStream | null = null;
 let stopRequested = false;
 let blinkWatch: BlinkWatch = initialBlinkWatch();
 let previousBoardGap: number | null = null;
-let stareChirped = false;
+let stareChirpIndex = 0;
+let postureBadSince: number | null = null;
+let lastHonkAskAt = 0;
 let faceBlink: FaceBlink | null = null;
 let faceBlinkLoad: Promise<FaceBlink> | null = null;
 let blinkTimer = 0;
@@ -80,17 +83,35 @@ function blinkSnapshot(now: number): BlinkSnapshot | null {
 }
 
 function maybeChirp(now = Date.now()) {
-  const due = stareChirpDue(stareChirped, blinkGapSeconds(blinkWatch, now), blinkWatch.holding);
+  const due = stareChirpDue(stareChirpIndex, blinkGapSeconds(blinkWatch, now), blinkWatch.holding);
   if (due.fire && !link) return;
-  stareChirped = due.chirped;
+  const previous = stareChirpIndex;
+  stareChirpIndex = due.index;
   if (!due.fire) return;
   void link?.noteChirp().catch(() => {
-    /* This stare already crossed 5 seconds. The next one can chirp. */
+    if (stareChirpIndex === due.index) stareChirpIndex = previous;
+  });
+}
+
+function postureIsBad() {
+  const score = state.liveScore;
+  if (!score) return false;
+  return score.posture <= 60 || score.head === "forward";
+}
+
+function maybeHonk(now = Date.now()) {
+  const due = postureHonkDue(postureBadSince, now, postureIsBad(), lastHonkAskAt);
+  postureBadSince = due.badSince;
+  if (!due.ask || !link) return;
+  lastHonkAskAt = now;
+  void link.noteHonk().catch(() => {
+    lastHonkAskAt = 0;
   });
 }
 
 function publishBlink(now = Date.now()) {
   maybeChirp(now);
+  maybeHonk(now);
   const blink = blinkSnapshot(now);
   if (!blink) return;
   if (
@@ -326,7 +347,9 @@ function startBlinkWatch(video: HTMLVideoElement) {
   stopBlinkWatch();
   blinkWatch = initialBlinkWatch();
   previousBoardGap = null;
-  stareChirped = false;
+  stareChirpIndex = 0;
+  postureBadSince = null;
+  lastHonkAskAt = 0;
   void ensureFaceBlink()?.catch(() => {
     /* The next camera start tries the landmarker again. Frames still go to the board. */
   });
@@ -368,7 +391,9 @@ export async function stopFootage() {
   stopBlinkWatch();
   blinkWatch = initialBlinkWatch();
   previousBoardGap = null;
-  stareChirped = false;
+  stareChirpIndex = 0;
+  postureBadSince = null;
+  lastHonkAskAt = 0;
   stream?.getTracks().forEach((track) => track.stop());
   stream = null;
   const current = link;

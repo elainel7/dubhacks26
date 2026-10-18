@@ -18,6 +18,11 @@ int main() {
     state = step.state;
     if (i == 3 && step.buzz != kBuzzPosture) return 1;
   }
+  PerchStep repeat = perch_tick(state, 3000 + 15000);
+  if (repeat.buzz != kBuzzPosture) return 1;
+  PerchState blinked = perch_note_blink(repeat.state, 3000 + 15000).state;
+  PerchStep tooSoon = perch_tick(blinked, 3000 + 15000 + 4000);
+  if (tooSoon.buzz != kBuzzNone) return 1;
   state = perch_initial(0);
   PerchStep closed = perch_apply(state, PerchReading{true, 0, 80, false, true}, 4000);
   if (closed.buzz != kBuzzNone || !closed.state.eyesShut || closed.state.blinksPerMinute != 1) return 2;

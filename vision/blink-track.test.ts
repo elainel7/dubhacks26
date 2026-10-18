@@ -5,6 +5,7 @@ import {
   blinkGapSeconds,
   initialBlinkTrack,
   initialBlinkWatch,
+  postureHonkDue,
   shownGapAt,
   stareChirpDue,
   takeBoardGap,
@@ -84,25 +85,51 @@ test("a climbing board gap does not overwrite a laptop blink", () => {
   assert.ok(Math.abs((blinkGapSeconds(caught.watch, 110_000) ?? 0) - 0.4) < 0.05);
 });
 
-test("the chirp fires once when the stare clock reaches five seconds", () => {
-  const under = stareChirpDue(false, 4.9, false);
+test("the chirp fires at every five second mark", () => {
+  const under = stareChirpDue(0, 4.9, false);
   assert.equal(under.fire, false);
-  assert.equal(under.chirped, false);
+  assert.equal(under.index, 0);
 
-  const hit = stareChirpDue(false, 5, false);
-  assert.equal(hit.fire, true);
-  assert.equal(hit.chirped, true);
+  const five = stareChirpDue(0, 5, false);
+  assert.equal(five.fire, true);
+  assert.equal(five.index, 1);
 
-  const still = stareChirpDue(true, 8, false);
+  const still = stareChirpDue(1, 9.9, false);
   assert.equal(still.fire, false);
 
-  const held = stareChirpDue(false, 6, true);
-  assert.equal(held.fire, false);
-  assert.equal(held.chirped, false);
+  const ten = stareChirpDue(1, 10, false);
+  assert.equal(ten.fire, true);
+  assert.equal(ten.index, 2);
 
-  const reset = stareChirpDue(true, 0.2, false);
-  assert.equal(reset.chirped, false);
+  const fifteen = stareChirpDue(2, 15.2, false);
+  assert.equal(fifteen.fire, true);
+  assert.equal(fifteen.index, 3);
+
+  const held = stareChirpDue(1, 12, true);
+  assert.equal(held.fire, false);
+  assert.equal(held.index, 1);
+
+  const reset = stareChirpDue(3, 0.2, false);
+  assert.equal(reset.index, 0);
   assert.equal(reset.fire, false);
+});
+
+test("a slouch asks for another honk every fifteen seconds", () => {
+  const early = postureHonkDue(1_000, 10_000, true, 0);
+  assert.equal(early.ask, false);
+
+  const first = postureHonkDue(1_000, 16_000, true, 0);
+  assert.equal(first.ask, true);
+
+  const soon = postureHonkDue(1_000, 18_000, true, 16_000);
+  assert.equal(soon.ask, false);
+
+  const again = postureHonkDue(1_000, 21_000, true, 16_000);
+  assert.equal(again.ask, true);
+
+  const fixed = postureHonkDue(1_000, 40_000, false, 21_000);
+  assert.equal(fixed.badSince, null);
+  assert.equal(fixed.ask, false);
 });
 
 test("a chart point uses the blink that happened before it", () => {

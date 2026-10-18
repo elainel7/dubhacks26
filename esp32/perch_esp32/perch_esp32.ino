@@ -790,6 +790,14 @@ void takeLaptopChirp() {
   playBuzzNow(kBuzzBlink);
 }
 
+void takeLaptopHonk() {
+  uint32_t now = millis();
+  if (alerts.lastPostureAlertAt != 0 && now - alerts.lastPostureAlertAt < static_cast<uint32_t>(kPostureRepeatMs)) return;
+  alerts.postureAlertSet = true;
+  alerts.lastPostureAlertAt = now;
+  playBuzzNow(kBuzzPosture);
+}
+
 void feed(uint8_t byte);
 
 /* Text commands only. A frame byte stays in the buffer for the main loop. */
@@ -825,6 +833,8 @@ void feed(uint8_t byte) {
         takeLaptopBlink();
       } else if (cmdLen == 5 && cmd[0] == 'c' && cmd[1] == 'h' && cmd[2] == 'i' && cmd[3] == 'r' && cmd[4] == 'p') {
         takeLaptopChirp();
+      } else if (cmdLen == 4 && cmd[0] == 'h' && cmd[1] == 'o' && cmd[2] == 'n' && cmd[3] == 'k') {
+        takeLaptopHonk();
       }
       cmdLen = 0;
       return;

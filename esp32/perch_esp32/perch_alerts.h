@@ -9,6 +9,7 @@ constexpr int kBlinksPerMinute = 20;
 constexpr int kBlinkRateAfterMs = 60000;
 constexpr int kPostureBadAt = 60;
 constexpr int kPostureStreak = 3;
+constexpr int kPostureRepeatMs = 15000;
 constexpr int kCooldownMs = 45000;
 constexpr uint32_t kBreakEveryMs = 20u * 60u * 1000u;
 constexpr uint32_t kBreakDurationMs = 20000;

@@ -77,19 +77,33 @@ export function watchBlink(watch: BlinkWatch, score: number, faceVisible: boolea
   return { watch: { ...watch, track: step.track }, committed: false };
 }
 
-/** The fast chirp. One per stare, when the open-eye clock first reaches this. */
+/** The fast chirp. It repeats on every multiple of this while the eyes stay open. */
 export const STARE_CHIRP_SECONDS = 5;
+/** Three blink intervals. The long posture honk repeats on this while the slouch holds. */
+export const POSTURE_HONK_SECONDS = 15;
 
 /**
- * Fires once when the stare clock reaches 5 seconds. A held close does not
- * chirp and does not re-arm the chirp. The latch clears after the eyes open
- * and the clock drops back under 5.
+ * Fires at 5s, 10s, 15s, and so on. A held close does not chirp. The count
+ * clears once the eyes are open and the clock is back under 5.
  */
-export function stareChirpDue(chirped: boolean, gap: number | null, holding: boolean) {
-  if (holding) return { chirped, fire: false };
-  if (gap == null || gap < STARE_CHIRP_SECONDS) return { chirped: false, fire: false };
-  if (chirped) return { chirped: true, fire: false };
-  return { chirped: true, fire: true };
+export function stareChirpDue(chirpIndex: number, gap: number | null, holding: boolean) {
+  if (holding) return { index: chirpIndex, fire: false };
+  if (gap == null || gap < STARE_CHIRP_SECONDS) return { index: 0, fire: false };
+  const index = Math.floor(gap / STARE_CHIRP_SECONDS);
+  if (index <= chirpIndex) return { index: chirpIndex, fire: false };
+  return { index, fire: true };
+}
+
+/**
+ * While posture stays bad, ask for a honk on each new 15s block. The board
+ * drops a request that arrives sooner than 15s after the last honk.
+ */
+export function postureHonkDue(badSince: number | null, now: number, bad: boolean, lastAskAt: number) {
+  if (!bad) return { badSince: null as number | null, ask: false };
+  const since = badSince ?? now;
+  if (now - since < POSTURE_HONK_SECONDS * 1000) return { badSince: since, ask: false };
+  if (now - lastAskAt < STARE_CHIRP_SECONDS * 1000) return { badSince: since, ask: false };
+  return { badSince: since, ask: true };
 }
 
 /** Seconds since the last open. Frozen while the lids stay shut. */
