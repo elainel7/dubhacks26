@@ -645,8 +645,32 @@
       paintBlinkClock();
     }
 
+    function blinkAxisTopFrom(events) {
+      const values = [];
+      events.forEach((event) => {
+        if (event.blink_gap != null && !Number.isNaN(Number(event.blink_gap))) values.push(Number(event.blink_gap));
+      });
+      if (!values.length) return 15;
+      let start = 0;
+      if (values[0] > 30 && values.length > 1) {
+        let run = 1;
+        let low = values[0];
+        for (let i = 1; i < values.length; i += 1) {
+          if (values[i] + 5 < low) break;
+          if (values[i] < low) low = values[i];
+          run += 1;
+        }
+        if (run < values.length) start = run;
+      }
+      let peak = 0;
+      for (let i = start; i < values.length; i += 1) if (values[i] > peak) peak = values[i];
+      if (values.length === 1 && values[0] > 30) return 15;
+      return Math.max(15, Math.ceil(peak));
+    }
+
     function renderChart(events) {
       if (typeof Chart === "undefined") return false;
+      blinkAxisTop = blinkAxisTopFrom(events);
       renderBlinks(events);
       if (!events.length) {
         if (chart) {
@@ -880,6 +904,7 @@
     let blinkWatch = { track: { armed: true, shutFrames: 0, lastFireAt: null }, holding: false, frozenGap: null, marks: [] };
     let blinkClockOn = false;
     let blinkTrace = [];
+    let blinkAxisTop = 15;
     let postureNeedsSit = false;
     let faceBlink = null;
     let faceBlinkLoad = null;
@@ -966,7 +991,7 @@
       const cutoff = now - 10 * 60 * 1000;
       while (blinkTrace.length && blinkTrace[0].t < cutoff) blinkTrace.shift();
       const last = blinkTrace[blinkTrace.length - 1];
-      if (last && now - last.t < 200 && last.gap === gap) return;
+      if (last && now - last.t < 1000 && gap >= last.gap) return;
       blinkTrace.push({ t: now, gap: gap });
       if (blinkTrace.length > 2400) blinkTrace.splice(0, blinkTrace.length - 2400);
       drawBlinkChart();
@@ -979,10 +1004,9 @@
         return;
       }
       const labels = blinkTrace.map((sample) => formatBucket(new Date(sample.t).toISOString(), 1));
-      const values = blinkTrace.map((sample) => sample.gap / 10);
-      const peak = Math.max(10, ...values);
+      const values = blinkTrace.map((sample) => sample.gap);
       setFrameMode(blinkFrame, "ready");
-      blinkChart = lineChart(blinkCanvas, blinkChart, labels, values, "#9c341f", "Seconds since blink", Math.ceil(peak));
+      blinkChart = lineChart(blinkCanvas, blinkChart, labels, values, "#9c341f", "Seconds since blink", blinkAxisTop);
     }
 
     function watchSample(score, faceVisible, now) {

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   BLINK_REFRACTORY_MS,
   appendBlinkSample,
+  blinkAxisMax,
   blinkGapSeconds,
   initialBlinkTrack,
   initialBlinkWatch,
@@ -133,14 +134,25 @@ test("a slouch asks for another honk every fifteen seconds", () => {
   assert.equal(fixed.ask, false);
 });
 
-test("the laptop blink line starts at 0 and keeps moving without a board score", () => {
+test("the laptop blink line samples once a second and keeps a blink drop", () => {
   const first = appendBlinkSample([], 1_000, 0);
   assert.deepEqual(first, [{ time: 1_000, gap: 0 }]);
-  assert.equal(appendBlinkSample(first, 1_100, 0), first);
-  assert.deepEqual(appendBlinkSample(first, 1_300, 0.3), [
+  assert.equal(appendBlinkSample(first, 1_500, 0.5), first);
+  assert.deepEqual(appendBlinkSample(first, 2_000, 1), [
     { time: 1_000, gap: 0 },
-    { time: 1_300, gap: 0.3 },
+    { time: 2_000, gap: 1 },
   ]);
+  assert.deepEqual(appendBlinkSample([{ time: 1_000, gap: 4 }], 1_200, 0.2), [
+    { time: 1_000, gap: 4 },
+    { time: 1_200, gap: 0.2 },
+  ]);
+});
+
+test("the blink axis stays at 15 until a saved stare is longer", () => {
+  assert.equal(blinkAxisMax([135.2, 135.2, 1.3, 0.5]), 15);
+  assert.equal(blinkAxisMax([135]), 15);
+  assert.equal(blinkAxisMax([1, 4, 2]), 15);
+  assert.equal(blinkAxisMax([2, 18.2, 4]), 19);
 });
 
 test("a chart point uses the blink that happened before it", () => {

@@ -6,6 +6,7 @@ import { getFootageServerSnapshot, getFootageSnapshot, subscribeFootage } from "
 import { Leaderboard } from "@/components/leaderboard-list";
 import { PointsPanel } from "@/components/points-panel";
 import { rememberDevice } from "@/components/site-nav";
+import { blinkAxisMax } from "@/vision/blink-track";
 
 type LiveEvent = {
   time: string;
@@ -218,8 +219,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
   const blinkRate = blinkLive ? blinkLive.rate : null;
   const blinkTrace = footage.blinkTrace;
   const hasBlinks = blinkTrace.length > 0;
-  const blinkMax = hasBlinks ? Math.max(10, ...blinkTrace.map((sample) => sample.gap / 10)) : 10;
-  const blinkTop = Math.ceil(blinkMax);
+  const blinkTop = blinkAxisMax((events ?? []).map((event) => (typeof event.blink_gap === "number" ? event.blink_gap : null)));
   const latest = events?.at(-1);
   const remindBlink = !blinkLive?.holding && typeof blinkGap === "number" && blinkGap >= 5;
   const remindPosture =
@@ -309,7 +309,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
               {hasBlinks ? (
                 <SeriesChart
                   times={blinkTrace.map((sample) => new Date(sample.time).toISOString())}
-                  values={blinkTrace.map((sample) => sample.gap / 10)}
+                  values={blinkTrace.map((sample) => sample.gap)}
                   yMax={blinkTop}
                   ticks={[...new Set([blinkTop, 5, 0])].sort((a, b) => b - a)}
                   mark={5}

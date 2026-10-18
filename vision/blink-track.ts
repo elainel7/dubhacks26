@@ -145,14 +145,37 @@ export function shownGap(watch: BlinkWatch, saved: number | null | undefined, no
 
 export type BlinkSample = { time: number; gap: number };
 
-/** Laptop blink line. It starts at 0 and does not wait for a board score. */
+/** One point a second, plus an immediate point when a blink drops the gap. */
 export function appendBlinkSample(samples: BlinkSample[], time: number, gap: number) {
   const cutoff = time - 10 * 60 * 1000;
   const recent = samples.length && samples[0].time < cutoff ? samples.filter((sample) => sample.time >= cutoff) : samples;
   const last = recent[recent.length - 1];
-  if (last && time - last.time < 200 && last.gap === gap) return recent;
+  if (last && time - last.time < 1000 && gap >= last.gap) return recent;
   const next = recent.concat({ time, gap });
-  return next.length > 2400 ? next.slice(-2400) : next;
+  return next.length > 600 ? next.slice(-600) : next;
+}
+
+/** Blink chart starts at 15 seconds. Saved scores above that raise the top. The power-on gap does not. */
+export function blinkAxisMax(gaps: Array<number | null>, floor = 15) {
+  const values = gaps.filter((gap): gap is number => gap != null && Number.isFinite(gap));
+  if (!values.length) return floor;
+  let start = 0;
+  if (values[0] > 30 && values.length > 1) {
+    let run = 1;
+    let low = values[0];
+    for (let i = 1; i < values.length; i += 1) {
+      if (values[i] + 5 < low) break;
+      if (values[i] < low) low = values[i];
+      run += 1;
+    }
+    if (run < values.length) start = run;
+  }
+  let peak = 0;
+  for (let i = start; i < values.length; i += 1) {
+    if (values[i] > peak) peak = values[i];
+  }
+  if (values.length === 1 && values[0] > 30) return floor;
+  return Math.max(floor, Math.ceil(peak));
 }
 
 /** One chart point. A later blink cannot rewrite an earlier score. */
