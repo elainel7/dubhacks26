@@ -3,7 +3,7 @@
 import { rememberDevice } from "@/components/site-nav";
 import { normalizeDeviceId } from "@/lib/device-id";
 import { serialAvailable } from "@/lib/serial";
-import { connectEsp32, FRAME_H, FRAME_W, type EspLink } from "@/vision/esp32-link";
+import { cameraCrop, connectEsp32, FRAME_H, FRAME_W, pickSheetFrames, type EspLink } from "@/vision/esp32-link";
 
 export type LiveScore = {
   face: boolean;
@@ -89,7 +89,9 @@ function grab(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
   if (video.readyState < 2) return null;
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) return null;
-  context.drawImage(video, 0, 0, FRAME_W, FRAME_H);
+  const crop = cameraCrop(video.videoWidth, video.videoHeight);
+  if (!crop) return null;
+  context.drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, FRAME_W, FRAME_H);
   const pixels = context.getImageData(0, 0, FRAME_W, FRAME_H).data;
   const gray = new Uint8Array(FRAME_W * FRAME_H);
   for (let i = 0, p = 0; i < pixels.length; i += 4, p++) {
@@ -126,7 +128,7 @@ let rememberedPort: SerialPort | null = null;
 function askForPortAndCamera() {
   const mediaPromise = navigator.mediaDevices.getUserMedia({
     audio: false,
-    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+    video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
   });
   const portPromise = rememberedPort ? Promise.resolve(rememberedPort) : navigator.serial.requestPort();
   return { mediaPromise, portPromise };
@@ -134,15 +136,32 @@ function askForPortAndCamera() {
 
 async function pump() {
   const { video, canvas } = hiddenElements();
-  while (!stopRequested && link) {
+  const ring: { t: number; gray: Uint8Array }[] = [];
+  let lastSample = 0;
+
+  function sample() {
+    const now = performance.now();
+    if (now - lastSample < 120) return;
+    lastSample = now;
     const gray = grab(video, canvas);
-    if (!gray) {
+    if (!gray) return;
+    ring.push({ t: Date.now(), gray });
+    if (ring.length > 48) ring.shift();
+  }
+
+  while (!stopRequested && link) {
+    sample();
+    const span = ring.length >= 2 ? ring[ring.length - 1].t - ring[0].t : 0;
+    if (ring.length < 4 || span < 500) {
       await sleep(40);
       continue;
     }
-    const started = performance.now();
+    const chosen = pickSheetFrames(ring);
+    ring.length = 0;
     try {
-      await link.sendFrame(Date.now(), gray);
+      for (const frame of chosen) {
+        await link.sendFrame(frame.t, frame.gray, sample);
+      }
     } catch (cause) {
       if (stopRequested) return;
       const message = cause instanceof Error ? cause.message : "The ESP32 did not answer.";
@@ -150,8 +169,6 @@ async function pump() {
       await stopFootage();
       return;
     }
-    const rest = 70 - (performance.now() - started);
-    if (rest > 0) await sleep(rest);
   }
 }
 

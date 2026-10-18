@@ -103,10 +103,9 @@ static bool knownShoulders(const char* value) {
 }
 
 static int postureOutOf100(int raw) {
-  int score = raw >= 1 && raw <= 10 ? raw * 10 : raw;
-  if (score < 1) score = 1;
-  if (score > 100) score = 100;
-  return score;
+  if (raw < 1) return 1;
+  if (raw > 100) return 100;
+  return raw;
 }
 
 bool readDeskScore(char* body, DeskScoreRead* out) {

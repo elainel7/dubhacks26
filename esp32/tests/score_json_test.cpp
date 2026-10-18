@@ -32,7 +32,7 @@ int main() {
   if (strcmp(score.head, "upright") != 0 || strcmp(score.shoulders, "level") != 0) return 3;
 
   if (!readDeskScore(spaced, &score)) return 4;
-  if (score.face || score.blinks != 0 || score.posture != 80) return 5;
+  if (score.face || score.blinks != 0 || score.posture != 8) return 5;
   if (strcmp(score.head, "forward") != 0 || strcmp(score.shoulders, "tilted") != 0) return 6;
 
   if (!readDeskScore(raw, &score)) return 7;

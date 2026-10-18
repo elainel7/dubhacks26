@@ -327,7 +327,7 @@ test("desk JSON is clamped and rejected when a field is missing", () => {
       face_visible: true,
       blink_count: 0,
       eyes_closed: false,
-      posture_score: 80,
+      posture_score: 8,
       head: "upright",
       shoulders: "level",
     },

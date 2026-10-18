@@ -135,11 +135,9 @@ export function parseDeskContent(content: string): DeskScore | null {
   };
 }
 
-/** Perceptron sometimes still answers 1–10. Stretch those onto 1–100. A 1–100 answer is kept. */
+/** The model is asked for 1–100. Clamp that range. A low score stays low. */
 export function postureOutOf100(raw: number) {
-  const rounded = Math.round(raw);
-  const scaled = rounded >= 1 && rounded <= 10 ? rounded * 10 : rounded;
-  return Math.max(1, Math.min(100, scaled));
+  return Math.max(1, Math.min(100, Math.round(raw)));
 }
 
 export function tokenCost(promptTokens: number, completionTokens: number) {

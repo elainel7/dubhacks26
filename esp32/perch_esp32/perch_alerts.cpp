@@ -103,6 +103,7 @@ PerchStep perch_apply(PerchState state, PerchReading reading, uint32_t now) {
     due.state.phase = kPhaseNoFace;
     due.state.postureScore = -1;
     due.state.eyesShut = false;
+    due.state.headForward = false;
     due.note = "step into frame.";
     return due;
   }
@@ -128,7 +129,8 @@ PerchStep perch_apply(PerchState state, PerchReading reading, uint32_t now) {
     due.state.lastBlinkAt = now;
   }
   due.state.postureScore = reading.postureScore;
-  if (reading.postureScore <= kPostureBadAt) due.state.badPostureStreak += 1;
+  due.state.headForward = reading.headForward;
+  if (reading.postureScore <= kPostureBadAt || reading.headForward) due.state.badPostureStreak += 1;
   else due.state.badPostureStreak = 0;
 
   if (!reading.degraded && !due.state.eyesShut && reading.blinkCount <= 0) {

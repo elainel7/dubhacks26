@@ -1,6 +1,6 @@
 // Perch on an ESP32.
 //
-// The laptop is only a camera. Chrome sends 96x72 grayscale frames over USB.
+// The laptop is only a camera. Chrome sends 160x120 grayscale frames over USB.
 // This board stores four of them, builds one contact sheet, asks Perceptron
 // Mk1.5, buzzes, and posts the posture number to Tiger Data for PERCH_DEVICE_ID.
 //
@@ -41,15 +41,15 @@
 #error "Copy secrets.example.h to secrets.h and fill in Wi-Fi, the device id, and the Perceptron key."
 #endif
 
-constexpr int kFrameW = 96;
-constexpr int kFrameH = 72;
+constexpr int kFrameW = 160;
+constexpr int kFrameH = 120;
 constexpr int kPixels = kFrameW * kFrameH;
 constexpr int kPanels = 4;
-constexpr int kSheetW = 584;
-constexpr int kSheetH = 144;
-constexpr int kPostureX = 392;
+constexpr int kSheetW = 808;
+constexpr int kSheetH = 120;
+constexpr int kPostureX = 648;
 constexpr size_t kPayloadLen = 4 + kPixels;
-constexpr size_t kJpegCap = 48 * 1024;
+constexpr size_t kJpegCap = 80 * 1024;
 constexpr int kBuzzerPin = 4;
 constexpr int kGreenPin = 5;
 constexpr int kYellowPin = 6;
@@ -63,20 +63,21 @@ constexpr uint8_t kMagic0 = 0xA5;
 constexpr uint8_t kMagic1 = 0x5A;
 
 static const char kPrompt[] =
-    "This grayscale image is one contact sheet of a person at a laptop. "
-    "Four small panels sit in one row on the left and cover about a quarter of a second. "
-    "blink_count is how many times the eyelids close in the small panels, read left to right. "
+    "This grayscale image is one contact sheet from a front-facing laptop camera. The face is close. "
+    "Four panels sit in a row on a near-black background. Read them left to right. They are samples across a couple of seconds, not consecutive video frames. "
+    "The right-hand panel has a bright white border and is POSTURE. Score only that panel. "
+    "blink_count is how many times the eyelids close in the left panels, read left to right. "
     "A blink is the change from pupils visible to lids covering the pupils. "
     "Count that close even when the eyes stay shut through the end of the sheet. "
-    "If the eyes are shut in every small panel, blink_count is 0 and eyes_closed is true. "
+    "If the eyes are shut in every left panel, blink_count is 0 and eyes_closed is true. "
     "A held close is still a blink. It is not one blink per panel, and it does not end until the eyes open. "
-    "eyes_closed is true when the lids cover the pupils in the last small panel, and false when the pupils are visible there. "
+    "eyes_closed is true when the lids cover the pupils in the last left panel, and false when the pupils are visible there. "
     "Eyes that are already shut in the first panel and then open are not an extra blink. "
     "Several shut panels after one close are one blink, not one blink per panel. "
     "The person may wear glasses. A bright reflection is not an open eye. "
     "Looking down with the pupils still visible is not a blink. Lids covering the pupils is a blink even if the chin drops. "
-    "The small panels are only for blinks. "
-    "The large panel with a white border is POSTURE. Score only that panel. "
+    "One panel with the eyes shut is a blink even when the panels beside it are open. "
+    "The left panels are only for blinks. "
     "posture_score is an integer from 1 to 100. 1 is the worst posture and 100 is the best. Use the whole range. "
     "90 to 100 means the ear is over the shoulder, the chin is back, and the chest is open. "
     "70 to 85 is upright with a small forward drift of the head. "
@@ -275,7 +276,7 @@ void showStatus() {
   }
   if (buzzing && alerts.phase != kPhaseBreak) red = true;
   else if (alerts.phase == kPhaseBreak || !wifiUp || alerts.phase == kPhaseNoFace || alerts.postureScore < 0) yellow = true;
-  else if (alerts.postureScore <= kPostureBadAt) red = true;
+  else if (alerts.postureScore <= kPostureBadAt || alerts.headForward) red = true;
   else green = true;
   setLeds(green, yellow, red);
 
@@ -301,7 +302,7 @@ void showStatus() {
   }
   char line0[20];
   snprintf(line0, sizeof(line0), "Posture %d", alerts.postureScore);
-  paintLcd(line0, alerts.postureScore <= kPostureBadAt ? "Sit up" : "Upright");
+  paintLcd(line0, alerts.postureScore <= kPostureBadAt || alerts.headForward ? "Sit up" : "Upright");
 }
 
 void beginBreak(uint32_t now) {
@@ -370,33 +371,19 @@ void blit(const uint8_t* src, int sw, int sh, int dx, int dy) {
   }
 }
 
-void blit2x(const uint8_t* src) {
+void composeSheet() {
+  memset(sheet, 18, (size_t)kSheetW * kSheetH);
+  for (int i = 0; i < kPanels; i++) {
+    blit(frames[i], kFrameW, kFrameH, i * kFrameW, 0);
+  }
+  blit(frames[kPanels - 1], kFrameW, kFrameH, kPostureX, 0);
   for (int y = 0; y < kFrameH; y++) {
     for (int x = 0; x < kFrameW; x++) {
-      uint8_t pixel = src[y * kFrameW + x];
-      int ox = kPostureX + x * 2;
-      int oy = y * 2;
-      sheet[(size_t)oy * kSheetW + ox] = pixel;
-      sheet[(size_t)oy * kSheetW + ox + 1] = pixel;
-      sheet[(size_t)(oy + 1) * kSheetW + ox] = pixel;
-      sheet[(size_t)(oy + 1) * kSheetW + ox + 1] = pixel;
-    }
-  }
-  for (int y = 0; y < kFrameH * 2; y++) {
-    for (int x = 0; x < kFrameW * 2; x++) {
-      if (x < 3 || y < 3 || x >= kFrameW * 2 - 3 || y >= kFrameH * 2 - 3) {
+      if (x < 4 || y < 4 || x >= kFrameW - 4 || y >= kFrameH - 4) {
         sheet[(size_t)y * kSheetW + kPostureX + x] = 255;
       }
     }
   }
-}
-
-void composeSheet() {
-  memset(sheet, 255, (size_t)kSheetW * kSheetH);
-  for (int i = 0; i < kPanels; i++) {
-    blit(frames[i], kFrameW, kFrameH, (i % 4) * kFrameW, (i / 4) * kFrameH);
-  }
-  blit2x(frames[kPanels - 1]);
 }
 
 size_t base64Into(const uint8_t* input, size_t length, uint8_t* output, size_t cap) {
@@ -646,7 +633,8 @@ void scoreSheet() {
     return;
   }
   composeSheet();
-  size_t jpegSize = jpeg_gray_encode(sheet, kSheetW, kSheetH, 60, jpeg, kJpegCap);
+  size_t jpegSize = jpeg_gray_encode(sheet, kSheetW, kSheetH, 55, jpeg, kJpegCap);
+  if (jpegSize == 0) jpegSize = jpeg_gray_encode(sheet, kSheetW, kSheetH, 30, jpeg, kJpegCap);
   free(sheet);
   sheet = nullptr;
   if (jpegSize == 0) {
@@ -756,7 +744,7 @@ void scoreSheet() {
   const char* shoulders = score.shoulders;
 
   uint32_t span = stamps[kPanels - 1] - stamps[0];
-  PerchReading reading{face, blinks, posture, span > 4000u, score.eyesClosed};
+  PerchReading reading{face, blinks, posture, span > 4000u, score.eyesClosed, strcmp(head, "forward") == 0};
   PerchStep step = perch_apply(alerts, reading, millis());
   alerts = step.state;
   lastApplyMs = millis();
@@ -875,7 +863,7 @@ void setup() {
   digitalWrite(kBuzzerPin, LOW);
   setLeds(false, false, false);
   hardwareHello();
-  Serial.setRxBufferSize(16384);
+  Serial.setRxBufferSize(32768);
   Serial.begin(921600);
   Serial.setTxTimeoutMs(100);
   delay(200);

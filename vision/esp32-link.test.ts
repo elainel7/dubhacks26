@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { crc16, encodeFrame, FRAME_PIXELS, parseEspLine } from "./esp32-link";
+import { cameraCrop, crc16, encodeFrame, FRAME_PIXELS, parseEspLine, pickSheetFrames } from "./esp32-link";
 
 test("crc16 matches the CCITT-FALSE vector", () => {
   assert.equal(crc16(new TextEncoder().encode("123456789")), 0x29b1);
@@ -23,6 +23,28 @@ test("a frame packet carries the timestamp, pixels, and crc", () => {
   assert.equal(packet[12 + FRAME_PIXELS - 1], 9);
   const crc = packet[packet.length - 2] | (packet[packet.length - 1] << 8);
   assert.equal(crc, crc16(packet.subarray(2, packet.length - 2)));
+});
+
+test("the camera crop keeps 4:3 and stays inside the frame", () => {
+  const wide = cameraCrop(1280, 720);
+  assert.ok(wide);
+  assert.ok(Math.abs(wide.sw / wide.sh - 160 / 120) < 0.02);
+  assert.ok(wide.sx >= 0 && wide.sy >= 0);
+  assert.ok(wide.sx + wide.sw <= 1280.01);
+  assert.ok(wide.sy + wide.sh <= 720.01);
+  assert.ok(wide.sw < 1280);
+});
+
+test("the darkest eye sample is kept for the sheet", () => {
+  function frame(fill: number) {
+    return { gray: new Uint8Array(FRAME_PIXELS).fill(fill) };
+  }
+  const ring = [frame(200), frame(200), frame(20), frame(200), frame(200), frame(180)];
+  const picked = pickSheetFrames(ring);
+  assert.equal(picked.length, 4);
+  assert.equal(picked[0], ring[0]);
+  assert.equal(picked[picked.length - 1], ring[ring.length - 1]);
+  assert.ok(picked.includes(ring[2]));
 });
 
 test("score, device, and error lines parse", () => {

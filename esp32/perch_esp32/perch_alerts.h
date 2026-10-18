@@ -20,6 +20,7 @@ struct PerchState {
   uint32_t lastBlinkAt;
   uint32_t heldGapMs;
   bool eyesShut;
+  bool headForward;
   uint32_t blinkAt[32];
   int blinkCount;
   int blinksPerMinute;
@@ -40,6 +41,7 @@ struct PerchReading {
   int postureScore;
   bool degraded;
   bool eyesClosed;
+  bool headForward;
 };
 
 struct PerchStep {

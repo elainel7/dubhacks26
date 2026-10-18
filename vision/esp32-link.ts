@@ -1,5 +1,5 @@
-export const FRAME_W = 96;
-export const FRAME_H = 72;
+export const FRAME_W = 160;
+export const FRAME_H = 120;
 export const FRAME_PIXELS = FRAME_W * FRAME_H;
 export const FRAME_TYPE = 1;
 
@@ -55,10 +55,76 @@ export function crc16(bytes: Uint8Array) {
   return crc;
 }
 
+/** Largest 4:3 window, then a slight zoom toward the head. Keeps shoulders and does not stretch 16:9. */
+export function cameraCrop(videoWidth: number, videoHeight: number) {
+  if (videoWidth < 2 || videoHeight < 2) return null;
+  const aspect = FRAME_W / FRAME_H;
+  let sw: number;
+  let sh: number;
+  let sx: number;
+  let sy: number;
+  if (videoWidth / videoHeight > aspect) {
+    sh = videoHeight;
+    sw = sh * aspect;
+    sx = (videoWidth - sw) / 2;
+    sy = 0;
+  } else {
+    sw = videoWidth;
+    sh = sw / aspect;
+    sx = 0;
+    sy = (videoHeight - sh) * 0.32;
+  }
+  const zoom = 0.82;
+  const cw = sw * zoom;
+  const ch = sh * zoom;
+  sx += (sw - cw) / 2;
+  sy += (sh - ch) * 0.2;
+  return { sx: Math.max(0, sx), sy: Math.max(0, sy), sw: cw, sh: ch };
+}
+
+function eyeEnergy(gray: Uint8Array) {
+  let sum = 0;
+  const y0 = Math.floor(FRAME_H * 0.28);
+  const y1 = Math.floor(FRAME_H * 0.52);
+  const x0 = Math.floor(FRAME_W * 0.22);
+  const x1 = Math.floor(FRAME_W * 0.78);
+  for (let y = y0; y < y1; y++) {
+    const row = y * FRAME_W;
+    for (let x = x0; x < x1; x++) sum += gray[row + x];
+  }
+  return sum;
+}
+
+/** Four samples across a ring. The darkest eye band stays, so a blink is not dropped. */
+export function pickSheetFrames<T extends { gray: Uint8Array }>(ring: T[]): T[] {
+  if (ring.length <= 4) return ring.slice();
+  const indexes = new Set<number>([0, ring.length - 1]);
+  let darkest = 1;
+  let dark = eyeEnergy(ring[1].gray);
+  let jump = 1;
+  let jumpAmount = -1;
+  for (let i = 1; i < ring.length - 1; i++) {
+    const energy = eyeEnergy(ring[i].gray);
+    if (energy < dark) {
+      dark = energy;
+      darkest = i;
+    }
+    const delta = Math.abs(energy - eyeEnergy(ring[i - 1].gray));
+    if (delta > jumpAmount) {
+      jumpAmount = delta;
+      jump = i;
+    }
+  }
+  indexes.add(darkest);
+  indexes.add(jump);
+  for (let i = 1; i < ring.length - 1 && indexes.size < 4; i++) indexes.add(i);
+  return [...indexes].sort((a, b) => a - b).map((index) => ring[index]);
+}
+
 /** One grayscale frame. Timestamp is the low 32 bits, little endian. */
 export function encodeFrame(timestampMs: number, gray: Uint8Array) {
   if (gray.length !== FRAME_PIXELS) {
-    throw new Error("A frame is 96 by 72 grayscale bytes.");
+    throw new Error("A frame is 160 by 120 grayscale bytes.");
   }
   const payloadLen = 4 + gray.length;
   const packet = new Uint8Array(2 + 6 + payloadLen + 2);
@@ -236,7 +302,7 @@ export async function connectEsp32(
   }
 
   return {
-    async sendFrame(timestampMs, gray) {
+    async sendFrame(timestampMs: number, gray: Uint8Array, whileScoring?: () => void) {
       await waitUntilHeard();
       idleLatched = false;
       const packet = encodeFrame(timestampMs, gray);
@@ -264,10 +330,11 @@ export async function connectEsp32(
       sheet = 0;
       const scoringStarted = Date.now();
       while (!idleLatched) {
+        whileScoring?.();
         if (Date.now() - scoringStarted > 45_000) {
           throw new Error("The ESP32 did not answer. It started a score and never finished.");
         }
-        await new Promise((resolve) => setTimeout(resolve, 30));
+        await new Promise((resolve) => setTimeout(resolve, 40));
       }
       idleLatched = false;
     },
