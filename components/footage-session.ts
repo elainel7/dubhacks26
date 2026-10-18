@@ -85,15 +85,18 @@ function grab(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
   return gray;
 }
 
-async function requestPort() {
-  const serial = navigator.serial as Navigator["serial"] & {
-    getPorts?: () => Promise<Array<Awaited<ReturnType<Navigator["serial"]["requestPort"]>>>>;
-  };
-  if (serial.getPorts) {
-    const ports = await serial.getPorts();
-    if (ports.length === 1) return ports[0];
-  }
-  return navigator.serial.requestPort();
+type SerialPort = Awaited<ReturnType<Navigator["serial"]["requestPort"]>>;
+
+let rememberedPort: SerialPort | null = null;
+
+/** requestPort has to run in the click, before any await, or Chrome hides the picker. */
+function askForPortAndCamera() {
+  const mediaPromise = navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+  });
+  const portPromise = rememberedPort ? Promise.resolve(rememberedPort) : navigator.serial.requestPort();
+  return { mediaPromise, portPromise };
 }
 
 async function pump() {
@@ -120,22 +123,24 @@ async function pump() {
 
 export async function startFootage() {
   if (state.collecting || state.starting) return;
-  emit({ ...state, starting: true, error: null });
   if (!serialAvailable()) {
     emit({ ...state, starting: false, error: "Chrome or Edge is required." });
     return;
   }
+  const { mediaPromise, portPromise } = askForPortAndCamera();
+  emit({ ...state, starting: true, error: null });
   stopRequested = false;
   try {
-    const media = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-    });
+    const media = await mediaPromise;
     stream = media;
     const { video } = hiddenElements();
     video.srcObject = media;
     await video.play();
-    link = await connectEsp32(requestPort, (line) => {
+    link = await connectEsp32(async () => {
+      const port = await portPromise;
+      rememberedPort = port;
+      return port;
+    }, (line) => {
       if (line.kind === "device") {
         const id = normalizeDeviceId(line.id);
         if (!id) return;
@@ -148,6 +153,7 @@ export async function startFootage() {
     emit({ ...state, collecting: true, starting: false, error: null });
     void pump();
   } catch (cause) {
+    rememberedPort = null;
     await stopFootage();
     const message = cause instanceof Error ? cause.message : "Could not start footage.";
     const cancelled =
