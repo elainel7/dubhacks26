@@ -253,7 +253,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
           <p className="text-sm font-medium text-muted-foreground">Device id</p>
           <h1 className="mt-1 text-3xl break-all text-foreground sm:text-4xl">{deviceId}</h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            Posture comes from the board. Blinks are counted on this computer, so the timer resets when your eyes open.
+            Press Start camera to send video from this computer to the board. Posture scores come back from the board. Blink timing is counted here and resets when your eyes open.
           </p>
           <p
             className={`font-heading text-4xl tracking-tight ${
@@ -288,7 +288,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
             <article className="rounded-2xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:px-5">
               <div className="mb-2 flex flex-col gap-1 px-1">
                 <h2 className="text-2xl text-foreground">Posture</h2>
-                <p className="text-sm text-muted-foreground">1 is collapsed. 100 is upright. The mark at 60 is poor posture.</p>
+                <p className="text-sm text-muted-foreground">The scale is 1 to 100. The mark at 60 is poor posture.</p>
               </div>
               {events && events.length === 0 ? (
                 <div className="flex min-h-48 flex-col items-start justify-center rounded-xl bg-muted/70 px-5 py-8">
@@ -314,7 +314,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
             <article className="rounded-2xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:px-5">
               <div className="mb-2 flex flex-col gap-1 px-1">
                 <h2 className="text-2xl text-foreground">Blinks</h2>
-                <p className="text-sm text-muted-foreground">Seconds since the last blink. The mark at 5 is the fast beep.</p>
+                <p className="text-sm text-muted-foreground">Seconds since your eyes last opened. The mark at 5 seconds is when the board chirps.</p>
               </div>
               {hasBlinks ? (
                 <SeriesChart
@@ -368,14 +368,14 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
               <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
                 {typeof blinkGap === "number" ? `${blinkGap.toFixed(1)} s` : "—"}
               </p>
-              <p className="mt-1 text-sm text-muted-foreground">Resets when your eyes open. Over 5 seconds is the fast beep.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Pauses while your eyes are closed, then resets when they open.</p>
             </article>
             <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
               <h2 className="text-sm font-semibold text-muted-foreground">Blinks this minute</h2>
               <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
                 {typeof blinkRate === "number" ? blinkRate : "—"}
               </p>
-              <p className="mt-1 text-sm text-muted-foreground">From the latest saved score.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Times the camera saw your eyes close during the latest score.</p>
             </article>
           </section>
         </>

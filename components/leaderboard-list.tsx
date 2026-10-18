@@ -56,8 +56,7 @@ export function Leaderboard({ heading = "page" }: { heading?: "page" | "section"
           Leaderboard
         </Title>
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-          Top desks by points over the last 7 days. A name is the display name on file, or the device id when there
-          isn&apos;t one.
+          Ranked by points from the last 7 days. Each row uses the name stored for that device, or the device id if no name is stored.
         </p>
       </div>
 

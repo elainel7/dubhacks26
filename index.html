@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="no hunch club. Posture and blinks for one device id." />
-  <meta name="theme-color" content="#f3f3f1" />
+  <meta name="description" content="Desk posture and blink scores for the device id on the board." />
+  <meta name="theme-color" content="#f4f0e6" />
   <title>no hunch club</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%231b1b1b'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%231c4d38'/%3E%3C/svg%3E" />
   <script>
     // Live API origin. No trailing slash.
     const API_BASE = "https://posture-api-x1my.onrender.com";
@@ -14,18 +14,18 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
   <style>
     :root {
-      --bg: #f3f3f1;
-      --ink: #1b1b1b;
-      --muted: #5c5c58;
-      --card: #ffffff;
-      --line: #d5d5d1;
-      --forest: #1b1b1b;
-      --forest-deep: #000000;
-      --paper: #f7f7f5;
-      --good: #1d6b3a;
-      --bad: #a33b24;
-      --soft: #efefec;
-      --focus: #1b1b1b;
+      --bg: #f4f0e6;
+      --ink: #1a2420;
+      --muted: #3f4a44;
+      --card: #fffdf8;
+      --line: #e4dcd0;
+      --forest: #1c4d38;
+      --forest-deep: #143628;
+      --paper: #f7f3ea;
+      --good: #14663f;
+      --bad: #9c341f;
+      --soft: #efe8dc;
+      --focus: #1c4d38;
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
@@ -240,11 +240,6 @@
       font-size: 0.92rem;
       font-weight: 700;
     }
-    .footnote {
-      margin: 22px 0 0;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
     .chart-panel { margin-bottom: 12px; }
     .points-head {
       display: flex;
@@ -354,7 +349,7 @@
       <p class="brand-name">no hunch club</p>
       <h1>Posture and blinks</h1>
       <p class="lede">
-        One device id. This computer counts blinks. The board scores how you're sitting.
+        Choose the device id on the board, then press Start camera. Chrome or Edge will ask for the webcam and the board's USB port. The video stays off this page.
       </p>
     </header>
     <div class="device-controls">
@@ -377,7 +372,7 @@
         <article>
           <h3>Level</h3>
           <p id="level-title" class="points-stat">—</p>
-          <p id="level-meta" class="points-meta">Last 7 days</p>
+          <p id="level-meta" class="points-meta">Points from the last 7 days</p>
           <div id="level-track" class="level-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Level progress">
             <span id="level-fill"></span>
           </div>
@@ -385,19 +380,19 @@
         <article>
           <h3>Today</h3>
           <p id="goal-stat" class="points-stat">—</p>
-          <p id="goal-meta" class="points-meta">Upright minutes toward 60</p>
+          <p id="goal-meta" class="points-meta">Minutes sitting upright today, out of 60</p>
         </article>
         <article>
           <h3>Streak</h3>
           <p id="streak-stat" class="points-stat">—</p>
-          <p id="streak-meta" class="points-meta">Flow multiplier and day streak</p>
+          <p id="streak-meta" class="points-meta">Minutes of good posture in a row</p>
         </article>
       </div>
     </section>
     <section class="chart-panel" aria-labelledby="chart-title">
       <div class="chart-heading">
         <h2 id="chart-title">Live scores</h2>
-        <p>Last 10 minutes. Posture is the board. Blinks are counted on this computer.</p>
+        <p>Both charts show the last 10 minutes. Posture is scored on the board from 1 to 100, and 60 or below is poor posture. The blink chart is seconds since your eyes last opened, counted by the camera on this computer.</p>
         <p id="reminder" class="reminder" role="status">Waiting for a score.</p>
       </div>
       <div class="chart-row">
@@ -449,30 +444,29 @@
     <section class="points-card chart-panel blink-stats" aria-label="Blinks">
       <div class="points-head">
         <h2>Blinks</h2>
-        <p>The timer resets when your eyes open. Over 5 seconds is the fast beep.</p>
+        <p>This clock runs in the browser. It pauses while your eyes are closed and resets when they open. The board chirps every 5 seconds the clock stays at 5 or above.</p>
       </div>
       <div class="points-grid">
         <article>
           <h3>Since last blink</h3>
           <p id="blink-gap" class="points-stat">—</p>
-          <p class="points-meta">Over 5 seconds is the fast beep</p>
+          <p class="points-meta">Pauses while your eyes are closed</p>
         </article>
         <article>
           <h3>Blinks this minute</h3>
           <p id="blink-rate" class="points-stat">—</p>
-          <p class="points-meta">From the latest sheet</p>
+          <p class="points-meta">Times the camera saw your eyes close on the latest score</p>
         </article>
       </div>
     </section>
     <section class="chart-panel" aria-labelledby="board-title">
       <div class="chart-heading">
         <h2 id="board-title">Leaderboard</h2>
-        <p>Points over the last 7 days. The name is the display name, or the device id when none is stored.</p>
+        <p>Ranked by points from the last 7 days. Each row uses the name stored for that device, or the device id if no name is stored.</p>
       </div>
       <ol id="leaderboard" class="board"></ol>
       <p id="board-status" role="status"></p>
     </section>
-    <p class="footnote">no hunch club. One device id at a time.</p>
   </main>
   <script>
     const apiBase = API_BASE.replace(/\/$/, "");
@@ -690,7 +684,7 @@
       });
       const hasBlinks = gaps.some((gap) => gap != null);
       setFrameMode(chartFrame, "ready");
-      chart = lineChart(chartCanvas, chart, labels, scores, "#1b1b1b", "Posture score", 100);
+      chart = lineChart(chartCanvas, chart, labels, scores, "#1c4d38", "Posture score", 100);
       if (!hasBlinks) {
         if (blinkChart) {
           blinkChart.destroy();
@@ -702,7 +696,7 @@
       const peak = Math.max(10, ...gaps.filter((gap) => gap != null));
       const yMax = Math.ceil(peak);
       setFrameMode(blinkFrame, "ready");
-      blinkChart = lineChart(blinkCanvas, blinkChart, labels, gaps, "#a33b24", "Seconds since blink", yMax);
+      blinkChart = lineChart(blinkCanvas, blinkChart, labels, gaps, "#9c341f", "Seconds since blink", yMax);
       return true;
     }
 
@@ -713,7 +707,7 @@
     function renderPoints(data) {
       const status = document.querySelector("#points-status");
       status.className = "";
-      status.textContent = "Last 7 days · Pacific time";
+      status.textContent = "Points from the last 7 days, in Pacific time.";
       const level = data.level || {};
       document.querySelector("#level-title").textContent = level.title || "—";
       const into = Number(level.points_into_level) || 0;

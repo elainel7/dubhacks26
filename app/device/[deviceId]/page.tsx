@@ -13,8 +13,8 @@ export async function generateMetadata({ params }: DevicePageProps): Promise<Met
   return {
     title: deviceId ? `Device ${deviceId}` : "Device",
     description: deviceId
-      ? `Percent upright, good and bad posture, and the most common problem for device id ${deviceId}.`
-      : "Posture for one device id.",
+      ? `Scores, points, and camera controls for ${deviceId}.`
+      : "Scores for one device id.",
   };
 }
 

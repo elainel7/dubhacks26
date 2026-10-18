@@ -3,16 +3,16 @@ import { SiteNav } from "@/components/site-nav";
 
 const highlights = [
   {
-    title: "Percent upright",
-    body: "How much of the window counted as good posture.",
+    title: "Start camera",
+    body: "Use Chrome or Edge. Allow the webcam, then pick the board's USB port. The page does not show the video.",
   },
   {
-    title: "Good and bad posture",
-    body: "Each minute, side by side, for one device id.",
+    title: "Charts",
+    body: "Posture is 1 to 100 from the board over the last 10 minutes. 60 or below is poor posture. The blink chart is seconds since your eyes last opened.",
   },
   {
-    title: "Most common problem",
-    body: "The slip that showed up most often.",
+    title: "Beeps",
+    body: "The board chirps every 5 seconds you go without a blink. A longer tone plays if poor posture keeps going.",
   },
 ];
 
@@ -27,7 +27,7 @@ export default function HomePage() {
         <div className="flex flex-col gap-3">
           <h1 className="max-w-xl text-3xl text-foreground sm:text-4xl">Posture and blinks</h1>
           <p className="max-w-xl text-lg leading-relaxed text-muted-foreground">
-            Posture and blinks for one device. The computer counts blinks. The board scores how you&apos;re sitting.
+            Enter the device id shown on the board. The next page has that device&apos;s scores, and Start camera connects this computer to the board.
           </p>
         </div>
         <DeviceIdForm />

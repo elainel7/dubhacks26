@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     default: "no hunch club",
     template: "%s · no hunch club",
   },
-  description: "Posture and blinks for one device id.",
+  description: "Desk posture and blink scores for the device id on the board.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

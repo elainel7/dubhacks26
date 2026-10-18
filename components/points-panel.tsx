@@ -98,7 +98,7 @@ function PointsBody({ points }: { points: PointsSnapshot }) {
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground">Today&apos;s goal</h3>
             <p className="mt-1 font-heading text-3xl tabular-nums text-foreground">{points.points_today}</p>
-            <p className="text-sm text-muted-foreground">points today · 60 upright minutes</p>
+            <p className="text-sm text-muted-foreground">Points earned today. The ring fills at 60 upright minutes.</p>
           </div>
         </article>
       </div>

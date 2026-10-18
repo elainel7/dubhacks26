@@ -29,7 +29,7 @@ export function DeviceIdForm() {
       <CardHeader>
         <CardTitle className="font-heading text-2xl text-foreground">Open a device</CardTitle>
         <CardDescription className="text-base leading-relaxed">
-          Type the device id printed on the lamp. This page shows only that device&apos;s posture.
+          Use the device id on the board&apos;s screen. This opens scores for that device only.
         </CardDescription>
       </CardHeader>
       <CardContent>

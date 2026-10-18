@@ -5,7 +5,7 @@ import { SiteNav } from "@/components/site-nav";
 
 export const metadata: Metadata = {
   title: "Camera",
-  description: "Live posture points for the device at the desk. The camera preview stays off.",
+  description: "Start the camera, send frames to the board, and count blinks in the browser.",
 };
 
 function CameraLoading() {

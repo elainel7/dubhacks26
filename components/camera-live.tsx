@@ -41,7 +41,7 @@ export function CameraLive() {
       <div className="max-w-xl">
         <h1 className="text-3xl text-foreground sm:text-4xl">Camera</h1>
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-          Start camera sends frames to the board. Blinks are counted here. This page does not show the picture.
+          Start camera sends frames to the board and counts blinks in this browser. The video is not shown on this page.
         </p>
       </div>
 
@@ -118,7 +118,7 @@ export function CameraLive() {
               {formError}
             </p>
           ) : (
-            <p className="mt-2 text-sm text-muted-foreground">The id printed on the lamp.</p>
+            <p className="mt-2 text-sm text-muted-foreground">The id on the board&apos;s screen.</p>
           )}
           <Button type="submit" className="mt-4 h-11 px-4 text-base">
             Watch this device
