@@ -69,7 +69,6 @@ static const char kPrompt[] =
     "A blink is lids covering the pupils. One shut panel counts, even if the eyes never open again in this sheet. "
     "eyes_closed is true when the second left panel is shut. If both are shut, blink_count is 0 and eyes_closed is true. "
     "The right panel with the white border is POSTURE. posture_score is 1 to 100: 100 upright, 60 or below is a slouch. "
-    "If the head stays forward, keep posture_score at 60 or below on the next sheet. Do not answer 80 every time. "
     "head is upright, forward, or unknown. "
     "If no face, face_visible is false, blink_count is 0, eyes_closed is false, posture_score is 50, head is unknown.";
 
@@ -116,10 +115,8 @@ static char lcdCache[2][17] = {"", ""};
 
 enum RxState { kWait0, kWait1, kHeader, kPayload, kCrc };
 static RxState rxState = kWait0;
-static char cmd[16];
+static char cmd[8];
 static uint8_t cmdLen = 0;
-static int laptopPosture = -1;
-static uint32_t laptopPostureAt = 0;
 static volatile bool scoringNow = false;
 static SemaphoreHandle_t serialMux = nullptr;
 static uint8_t header[6];
@@ -750,11 +747,6 @@ void scoreSheet() {
   bool face = score.face;
   int blinks = score.blinks;
   int posture = score.posture;
-  if (laptopPosture >= 1 && millis() - laptopPostureAt < 8000) {
-    posture = laptopPosture;
-    strncpy(score.head, posture <= 60 ? "forward" : "upright", sizeof(score.head));
-    score.head[sizeof(score.head) - 1] = 0;
-  }
   const char* head = score.head;
   const char* shoulders = score.shoulders;
 
@@ -796,13 +788,6 @@ void takeLaptopChirp() {
   alerts.blinkAlertSet = true;
   alerts.lastBlinkAlertAt = now;
   playBuzzNow(kBuzzBlink);
-}
-
-void takeLaptopPose(int score) {
-  if (score < 1) score = 1;
-  if (score > 100) score = 100;
-  laptopPosture = score;
-  laptopPostureAt = millis();
 }
 
 void takeLaptopHonk() {
@@ -850,23 +835,11 @@ void feed(uint8_t byte) {
         takeLaptopChirp();
       } else if (cmdLen == 4 && cmd[0] == 'h' && cmd[1] == 'o' && cmd[2] == 'n' && cmd[3] == 'k') {
         takeLaptopHonk();
-      } else if (cmdLen >= 6 && cmd[0] == 'p' && cmd[1] == 'o' && cmd[2] == 's' && cmd[3] == 'e' && cmd[4] == ' ') {
-        int value = 0;
-        bool digits = false;
-        for (uint8_t i = 5; i < cmdLen; i++) {
-          if (cmd[i] < '0' || cmd[i] > '9') {
-            digits = false;
-            break;
-          }
-          digits = true;
-          value = value * 10 + (cmd[i] - '0');
-        }
-        if (digits) takeLaptopPose(value);
       }
       cmdLen = 0;
       return;
     }
-    if (byte >= 32 && byte < 127 && cmdLen < 15) cmd[cmdLen++] = (char)byte;
+    if (byte >= 32 && byte < 127 && cmdLen < 7) cmd[cmdLen++] = (char)byte;
     else cmdLen = 0;
     return;
   }

@@ -6,7 +6,6 @@ import { getFootageServerSnapshot, getFootageSnapshot, subscribeFootage } from "
 import { Leaderboard } from "@/components/leaderboard-list";
 import { PointsPanel } from "@/components/points-panel";
 import { shownGapAt } from "@/vision/blink-track";
-import { postureChartPoints } from "@/vision/posture-face";
 import { rememberDevice } from "@/components/site-nav";
 
 type LiveEvent = {
@@ -216,8 +215,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
     };
   }, [deviceId]);
 
-  const posturePoints = postureChartPoints(events ?? [], footage.postureTrace, footage.collecting ? footage.postureSessionStart : null);
-  const summary = events ? summarize(posturePoints.length ? posturePoints : events) : null;
+  const summary = events ? summarize(events) : null;
   const savedBlink = [...(events ?? [])].reverse().find((event) => event.blink_gap != null || event.blinks_per_minute != null);
   const blinkGap = blinkLive ? blinkLive.gap : blink && Number.isFinite(blink.gap) ? blink.gap : savedBlink?.blink_gap;
   const blinkRate = blinkLive
@@ -233,13 +231,10 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
   const blinkMax = hasBlinks ? Math.max(10, ...blinkGaps.filter((gap): gap is number => gap != null)) : 10;
   const blinkTop = Math.ceil(blinkMax);
   const latest = events?.at(-1);
-  const cameraPosture = footage.collecting ? footage.liveScore?.posture : null;
   const remindBlink = !blinkLive?.holding && typeof blinkGap === "number" && blinkGap >= 5;
   const remindPosture =
-    cameraPosture != null
-      ? cameraPosture <= 60
-      : latest != null &&
-        ((latest.posture != null && latest.posture <= 60) || latest.label === "slouching" || latest.label === "leaning_forward");
+    latest != null &&
+    ((latest.posture != null && latest.posture <= 60) || latest.label === "slouching" || latest.label === "leaning_forward");
   const reminder = !events?.length
     ? "Waiting for a score."
     : [remindBlink ? "Blink" : null, remindPosture ? "Sit up taller" : null].filter(Boolean).join(" · ") || "Good";
@@ -258,7 +253,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
           <p className="text-sm font-medium text-muted-foreground">Device id</p>
           <h1 className="mt-1 text-3xl break-all text-foreground sm:text-4xl">{deviceId}</h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            Press Start camera to send video from this computer to the board. While it is on, the posture line is measured here and stays with the pose you are holding. Blink timing resets when your eyes open.
+            Press Start camera to send video from this computer to the board. Posture scores come back from the board. Blink timing is counted here and resets when your eyes open.
           </p>
           <p
             className={`font-heading text-4xl tracking-tight ${
@@ -293,9 +288,9 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
             <article className="rounded-2xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:px-5">
               <div className="mb-2 flex flex-col gap-1 px-1">
                 <h2 className="text-2xl text-foreground">Posture</h2>
-                <p className="text-sm text-muted-foreground">The scale is 1 to 100. The mark at 60 is poor posture. While the camera is on, a slouch stays low until you sit up.</p>
+                <p className="text-sm text-muted-foreground">The scale is 1 to 100. The mark at 60 is poor posture.</p>
               </div>
-              {posturePoints.length === 0 ? (
+              {events && events.length === 0 ? (
                 <div className="flex min-h-48 flex-col items-start justify-center rounded-xl bg-muted/70 px-5 py-8">
                   <p className="font-heading text-2xl text-foreground">No scores yet</p>
                   <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
@@ -304,8 +299,8 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
                 </div>
               ) : (
                 <SeriesChart
-                  times={posturePoints.map((event) => event.time)}
-                  values={posturePoints.map((event) => event.posture)}
+                  times={(events ?? []).map((event) => event.time)}
+                  values={(events ?? []).map((event) => event.posture ?? 0)}
                   yMax={100}
                   ticks={[100, 60, 0]}
                   mark={60}

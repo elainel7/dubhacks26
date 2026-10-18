@@ -15,7 +15,6 @@ import {
 } from "@/vision/blink-track";
 import { loadFaceBlink, type FaceBlink } from "@/vision/face-blink";
 import { cameraCrop, connectEsp32, FRAME_H, FRAME_W, pickSheetFrames, type EspLink } from "@/vision/esp32-link";
-import { notePostureSample, postureFromLandmarks, type PostureTrack } from "@/vision/posture-face";
 
 export type LiveScore = {
   face: boolean;
@@ -34,8 +33,6 @@ export type BlinkSnapshot = {
   marks: number[];
 };
 
-export type PosturePoint = { t: number; score: number };
-
 export type FootageState = {
   collecting: boolean;
   starting: boolean;
@@ -43,8 +40,6 @@ export type FootageState = {
   deviceId: string | null;
   liveScore: LiveScore | null;
   blink: BlinkSnapshot | null;
-  postureTrace: PosturePoint[];
-  postureSessionStart: number | null;
 };
 
 const serverSnapshot: FootageState = {
@@ -54,8 +49,6 @@ const serverSnapshot: FootageState = {
   deviceId: null,
   liveScore: null,
   blink: null,
-  postureTrace: [],
-  postureSessionStart: null,
 };
 
 let state: FootageState = serverSnapshot;
@@ -72,10 +65,6 @@ let faceBlink: FaceBlink | null = null;
 let faceBlinkLoad: Promise<FaceBlink> | null = null;
 let blinkTimer = 0;
 let clockTimer = 0;
-let postureTrack: PostureTrack = { score: null };
-let postureTrace: PosturePoint[] = [];
-let postureSessionStart: number | null = null;
-let lastPosturePointAt = 0;
 
 function emit(next: FootageState) {
   state = next;
@@ -105,38 +94,9 @@ function maybeChirp(now = Date.now()) {
 }
 
 function postureIsBad() {
-  if (postureTrack.score != null) return postureTrack.score <= 60;
   const score = state.liveScore;
   if (!score) return false;
   return score.posture <= 60 || score.head === "forward";
-}
-
-function noteCameraPosture(landmarks: { x: number; y: number; z?: number }[] | null, now: number) {
-  const reading = postureFromLandmarks(landmarks);
-  postureTrack = notePostureSample(postureTrack, reading?.score ?? null);
-  const score = postureTrack.score;
-  if (score == null || now - lastPosturePointAt < 1000) return;
-  lastPosturePointAt = now;
-  postureTrace = [...postureTrace, { t: now, score }].slice(-600);
-  const blink = blinkSnapshot(now);
-  emit({
-    ...state,
-    postureTrace,
-    postureSessionStart,
-    blink,
-    liveScore: {
-      face: true,
-      posture: score,
-      head: score <= 60 ? "forward" : "upright",
-      gap: blink?.gap ?? state.liveScore?.gap ?? 0,
-      rate: blink?.rate ?? state.liveScore?.rate ?? 0,
-      saved: state.liveScore?.saved ?? false,
-      seq: (state.liveScore?.seq ?? 0) + 1,
-    },
-  });
-  void link?.notePose(score).catch(() => {
-    /* An older sketch ignores pose. The chart still uses this score. */
-  });
 }
 
 function maybeHonk(now = Date.now()) {
@@ -309,10 +269,6 @@ export async function startFootage() {
     const { video } = hiddenElements();
     video.srcObject = media;
     await video.play();
-    postureTrack = { score: null };
-    postureTrace = [];
-    postureSessionStart = Date.now();
-    lastPosturePointAt = 0;
     startBlinkWatch(video);
     link = await connectEsp32(async () => {
       const port = await portPromise;
@@ -330,14 +286,13 @@ export async function startFootage() {
         previousBoardGap = taken.previousBoardGap;
         const now = Date.now();
         const blink = blinkSnapshot(now);
-        const posture = postureTrack.score ?? line.posture;
         emit({
           ...state,
           blink,
           liveScore: {
             face: line.face,
-            posture,
-            head: postureTrack.score != null ? (posture <= 60 ? "forward" : "upright") : line.head,
+            posture: line.posture,
+            head: line.head,
             gap: blink?.gap ?? line.gap,
             rate: blink ? Math.max(line.rate, blink.rate) : line.rate,
             saved: false,
@@ -419,7 +374,6 @@ function startBlinkWatch(video: HTMLVideoElement) {
     const now = Date.now();
     const step = watchBlink(blinkWatch, sample.score, sample.faceVisible, now);
     blinkWatch = step.watch;
-    noteCameraPosture(sample.landmarks, now);
     if (step.committed) {
       publishBlink(now);
       void link?.noteBlink().catch(() => {
@@ -440,10 +394,6 @@ export async function stopFootage() {
   stareChirpIndex = 0;
   postureBadSince = null;
   lastHonkAskAt = 0;
-  postureTrack = { score: null };
-  postureTrace = [];
-  postureSessionStart = null;
-  lastPosturePointAt = 0;
   stream?.getTracks().forEach((track) => track.stop());
   stream = null;
   const current = link;
@@ -451,5 +401,5 @@ export async function stopFootage() {
   const video = document.getElementById("perch-footage");
   if (video instanceof HTMLVideoElement) video.srcObject = null;
   await current?.close();
-  emit({ ...state, collecting: false, starting: false, blink: null, postureTrace: [], postureSessionStart: null });
+  emit({ ...state, collecting: false, starting: false, blink: null });
 }
