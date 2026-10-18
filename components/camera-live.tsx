@@ -39,11 +39,9 @@ export function CameraLive() {
   return (
     <div className="flex flex-col gap-6">
       <div className="max-w-xl">
-        <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Camera</p>
-        <h1 className="mt-1 text-4xl text-foreground sm:text-5xl">Sit up, score points.</h1>
+        <h1 className="text-3xl text-foreground sm:text-4xl">Camera</h1>
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-          The laptop sends frames. The board scores and saves. This page does not show the camera. An upright save
-          lands here as points, then the minute rollup catches up.
+          Start camera sends frames to the board. Blinks are counted here. This page does not show the picture.
         </p>
       </div>
 

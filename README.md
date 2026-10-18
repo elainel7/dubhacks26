@@ -1,17 +1,17 @@
-# Perch
+# no hunch club
 
-No more hunching. Perch is a desk companion: the camera scores posture, and the site shows how much of the time a device id sat upright.
+Desk posture and blinks for one device id. The computer counts blinks. The board scores how you're sitting, and the site shows the record.
 
 Two parts live in this repo.
 
 - **Perch** (Next.js) opens on a device id. `/device/[deviceId]` shows only that device's posture: percent upright, good and bad posture, and the most common problem. The same screen turns footage collection on and off. There is no camera preview.
-- **Posture API** stores numeric posture rows in Tiger Data. The static dashboard is `index.html` at the repo root, branded Perch, and published to nohunch.club. Instructions follow the Perch section.
+- **Posture API** stores numeric posture rows in Tiger Data. The static dashboard is `index.html` at the repo root, branded no hunch club, and published to nohunch.club. Instructions follow the Perch section.
 
 ## Layout
 
 ```
 backend/     FastAPI app (api/), SQL (db/), seed script (scripts/), Python tests (tests/), requirements.txt, .env.example
-web/         static Perch dashboard (index.html)
+web/         static no hunch club dashboard (index.html)
 shared/      empty placeholder for code used by more than one app
 index.html   copy of web/index.html
 app/         Next.js pages: /, /device/[deviceId]

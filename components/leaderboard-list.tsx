@@ -50,8 +50,7 @@ export function Leaderboard() {
   return (
     <section className="flex flex-col gap-4" aria-labelledby="board-title">
       <div className="max-w-xl">
-        <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Sit straighter</p>
-        <h1 id="board-title" className="mt-1 text-4xl text-foreground sm:text-5xl">
+        <h1 id="board-title" className="text-3xl text-foreground sm:text-4xl">
           Leaderboard
         </h1>
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">

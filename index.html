@@ -3,13 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Perch — no more hunching. Percent upright, good and bad posture, and the most common problem for a device id." />
-  <meta name="theme-color" content="#f4f0e6" />
-  <title>Perch</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231c4d38'/%3E%3Cpath d='M7 22h18' stroke='%23f7f3ea' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M13 21c2-5 5-8 9-9-2 3-1 5 0 6-3 0-6 1-9 3z' fill='%23f7f3ea'/%3E%3C/svg%3E" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+  <meta name="description" content="no hunch club. Posture and blinks for one device id." />
+  <meta name="theme-color" content="#f3f3f1" />
+  <title>no hunch club</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%231b1b1b'/%3E%3C/svg%3E" />
   <script>
     // Live API origin. No trailing slash.
     const API_BASE = "https://posture-api-x1my.onrender.com";
@@ -17,31 +14,27 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
   <style>
     :root {
-      --bg: #f4f0e6;
-      --ink: #1a2420;
-      --muted: #3f4a44;
-      --card: #fffdf8;
-      --line: #e4dcd0;
-      --forest: #1c4d38;
-      --forest-deep: #143628;
-      --paper: #f7f3ea;
-      --good: #14663f;
-      --bad: #9c341f;
-      --soft: #efe8dc;
-      --focus: #1c4d38;
+      --bg: #f3f3f1;
+      --ink: #1b1b1b;
+      --muted: #5c5c58;
+      --card: #ffffff;
+      --line: #d5d5d1;
+      --forest: #1b1b1b;
+      --forest-deep: #000000;
+      --paper: #f7f7f5;
+      --good: #1d6b3a;
+      --bad: #a33b24;
+      --soft: #efefec;
+      --focus: #1b1b1b;
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
     body {
       margin: 0;
       min-height: 100vh;
-      background-color: var(--bg);
-      background-image:
-        radial-gradient(920px 440px at -8% -16%, rgb(220 238 228 / 0.95), transparent 62%),
-        radial-gradient(720px 400px at 108% -12%, rgb(243 230 212 / 0.9), transparent 58%);
-      background-attachment: fixed;
+      background: var(--bg);
       color: var(--ink);
-      font: 17px/1.5 "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+      font: 16px/1.45 ui-sans-serif, system-ui, sans-serif;
     }
     .skip-link {
       position: absolute;
@@ -51,7 +44,7 @@
       background: var(--forest);
       color: var(--paper);
       padding: 0.5rem 0.9rem;
-      border-radius: 999px;
+      border-radius: 2px;
       font-weight: 700;
       z-index: 5;
     }
@@ -70,18 +63,19 @@
     .brand-mark { width: 40px; height: 40px; flex: none; }
     .brand-name {
       margin: 0;
-      font-family: Fraunces, Georgia, serif;
-      font-size: 1.7rem;
-      letter-spacing: -0.03em;
-      line-height: 1;
+      font-family: inherit;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: 0;
+      line-height: 1.2;
     }
     h1 {
-      margin: 22px 0 0;
-      font-family: Fraunces, Georgia, serif;
-      font-size: clamp(2.4rem, 6vw, 4.2rem);
-      font-weight: 560;
-      letter-spacing: -0.035em;
-      line-height: 1.02;
+      margin: 18px 0 0;
+      font-family: inherit;
+      font-size: clamp(1.7rem, 4vw, 2.2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
     }
     .lede {
       margin: 14px 0 0;
@@ -110,7 +104,7 @@
       color: var(--ink);
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 4px;
       padding: 10px 12px;
       min-height: 46px;
     }
@@ -139,9 +133,9 @@
     .summary-stats article, .chart-panel {
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 18px;
+      border-radius: 4px;
       padding: 18px 18px 16px;
-      box-shadow: 0 16px 40px rgb(28 36 32 / 0.05);
+      box-shadow: none;
     }
     .summary-stats h2, .chart-panel h2 {
       margin: 0;
@@ -153,13 +147,13 @@
     }
     .chart-panel h2 {
       color: var(--ink);
-      font-family: Fraunces, Georgia, serif;
+      font-family: inherit;
       font-size: 1.7rem;
       letter-spacing: -0.03em;
     }
     .summary-stats p {
       margin: 10px 0 0;
-      font-family: Fraunces, Georgia, serif;
+      font-family: inherit;
       font-size: 2.4rem;
       letter-spacing: -0.03em;
       line-height: 1.1;
@@ -173,7 +167,7 @@
     .chart-heading p { margin: 6px 0 0; color: var(--muted); }
     .reminder {
       margin: 16px 0 0;
-      font-family: Fraunces, Georgia, serif;
+      font-family: inherit;
       font-size: 2.4rem;
       font-weight: 560;
       letter-spacing: -0.03em;
@@ -189,7 +183,7 @@
     }
     .chart-sub {
       margin: 0;
-      font-family: Fraunces, Georgia, serif;
+      font-family: inherit;
       font-size: 1.35rem;
       font-weight: 560;
       letter-spacing: -0.03em;
@@ -207,14 +201,14 @@
       align-content: center;
       margin: 0;
       padding: 24px;
-      border-radius: 14px;
+      border-radius: 4px;
       background: var(--soft);
       color: var(--ink);
       text-align: left;
     }
     .chart-message strong {
       display: block;
-      font-family: Fraunces, Georgia, serif;
+      font-family: inherit;
       font-size: 1.6rem;
       font-weight: 560;
       letter-spacing: -0.03em;
@@ -246,12 +240,6 @@
       font-size: 0.92rem;
       font-weight: 700;
     }
-    #footage-status {
-      flex-basis: 100%;
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
     .footnote {
       margin: 22px 0 0;
       color: var(--muted);
@@ -269,7 +257,7 @@
     .points-head h2 {
       margin: 0;
       color: var(--ink);
-      font-family: Fraunces, Georgia, serif;
+      font-family: inherit;
       font-size: 1.7rem;
       letter-spacing: -0.03em;
     }
@@ -280,7 +268,7 @@
     }
     .points-grid article {
       background: var(--soft);
-      border-radius: 14px;
+      border-radius: 4px;
       padding: 14px 14px 12px;
     }
     .points-grid h3 {
@@ -289,12 +277,12 @@
       font-family: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
       font-size: 0.78rem;
       font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      letter-spacing: 0;
+      text-transform: none;
     }
     .points-stat {
       margin: 8px 0 0;
-      font-family: Fraunces, Georgia, serif;
+      font-family: inherit;
       font-size: 1.7rem;
       letter-spacing: -0.03em;
       line-height: 1.1;
@@ -304,7 +292,7 @@
       height: 8px;
       margin-top: 10px;
       overflow: hidden;
-      border-radius: 999px;
+      border-radius: 2px;
       background: var(--line);
     }
     .level-track span {
@@ -328,7 +316,7 @@
       gap: 12px;
       align-items: center;
       padding: 10px 12px;
-      border-radius: 12px;
+      border-radius: 4px;
       background: var(--soft);
     }
     .board .rank {
@@ -336,13 +324,13 @@
       place-items: center;
       width: 2rem;
       height: 2rem;
-      border-radius: 999px;
+      border-radius: 4px;
       background: var(--forest);
       color: var(--paper);
       font-weight: 700;
     }
     .board .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .board .pts { font-family: Fraunces, Georgia, serif; font-size: 1.25rem; }
+    .board .pts { font-family: inherit; font-size: 1.25rem; }
     #points-status.is-error, #board-status.is-error { color: var(--bad); font-weight: 700; }
     @media (max-width: 720px) {
       main { padding: 20px 16px 48px; }
@@ -362,19 +350,10 @@
   <a class="skip-link" href="#content">Skip to content</a>
   <main id="content">
     <header class="site-header">
-      <div class="brand-lockup">
-        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-          <rect width="32" height="32" rx="9" fill="#1c4d38" />
-          <path d="M7 22.25h18" stroke="#f7f3ea" stroke-width="1.75" stroke-linecap="round" />
-          <path d="M13.2 21.15c1.5-4.5 3.8-6.9 7.8-7.9-2 2.4-1.6 4.5-.1 6-2.4.2-4.8.9-7.7 1.9z" fill="#f7f3ea" />
-          <circle cx="19.5" cy="13.5" r="0.8" fill="#1c4d38" />
-        </svg>
-        <p class="brand-name">Perch</p>
-      </div>
-      <h1>No more hunching.</h1>
+      <p class="brand-name">no hunch club</p>
+      <h1>Posture and blinks</h1>
       <p class="lede">
-        Perch keeps a simple record for each device id: how much of the time you sat upright,
-        and the posture problem that showed up most.
+        One device id. This computer counts blinks. The board scores how you're sitting.
       </p>
     </header>
     <div class="device-controls">
@@ -385,8 +364,7 @@
         </select>
       </label>
       <button id="refresh" type="button">Refresh</button>
-      <button id="footage" type="button" aria-pressed="false">Not collecting footage</button>
-      <p id="footage-status" hidden></p>
+      <button id="footage" type="button" aria-pressed="false">Start camera</button>
       <p id="footage-error" hidden></p>
     </div>
     <section class="summary-stats" aria-label="Posture summary">
@@ -432,7 +410,7 @@
     <section class="points-card chart-panel" aria-label="Blinks">
       <div class="points-head">
         <h2>Blinks</h2>
-        <p>Saved with each score, so this updates on any screen. The board does not show blinks. Over 5 seconds since the last blink is the fast beep.</p>
+        <p>The timer resets when your eyes open. Over 5 seconds is the fast beep.</p>
       </div>
       <div class="points-grid">
         <article>
@@ -450,7 +428,7 @@
     <section class="chart-panel" aria-labelledby="chart-title">
       <div class="chart-heading">
         <h2 id="chart-title">Live scores</h2>
-        <p>Two graphs for the last 10 minutes. A score is two small frames, so it can finish inside the five-second blink window.</p>
+        <p>Last 10 minutes. Posture is the board. Blinks are counted on this computer.</p>
         <p id="reminder" class="reminder" role="status">Waiting for a score.</p>
       </div>
       <div class="chart-row">
@@ -493,7 +471,7 @@
       <ol id="leaderboard" class="board"></ol>
       <p id="board-status" role="status"></p>
     </section>
-    <p class="footnote">Perch · no more hunching. This page reads one device id at a time.</p>
+    <p class="footnote">no hunch club. One device id at a time.</p>
   </main>
   <script>
     const apiBase = API_BASE.replace(/\/$/, "");
@@ -524,7 +502,7 @@
     let chart = null;
     let blinkChart = null;
 
-    const chartFont = '"Source Sans 3", "Segoe UI", system-ui, sans-serif';
+    const chartFont = 'ui-sans-serif, system-ui, sans-serif';
     if (typeof Chart !== "undefined") {
       Chart.defaults.font.family = chartFont;
       Chart.defaults.color = "#3f4a44";
@@ -677,10 +655,14 @@
         if (latest) break;
       }
       if (!latest) return;
+      if (latest.blink_gap != null) takeBoardGap(Number(latest.blink_gap), Date.now());
+      paintBlinkClock();
       const gapEl = document.querySelector("#blink-gap");
       const rateEl = document.querySelector("#blink-rate");
-      if (gapEl && latest.blink_gap != null) gapEl.textContent = Number(latest.blink_gap).toFixed(1) + " s";
-      if (rateEl && latest.blinks_per_minute != null) rateEl.textContent = String(latest.blinks_per_minute);
+      if (blinkGapNow(Date.now()) == null) {
+        if (gapEl && latest.blink_gap != null) gapEl.textContent = Number(latest.blink_gap).toFixed(1) + " s";
+        if (rateEl && latest.blinks_per_minute != null) rateEl.textContent = String(latest.blinks_per_minute);
+      }
     }
 
     function renderChart(events) {
@@ -700,12 +682,14 @@
       }
       const labels = events.map((event) => formatBucket(event.time, 1));
       const scores = events.map((event) => event.posture);
-      const gaps = events.map((event) =>
-        event.blink_gap == null || Number.isNaN(Number(event.blink_gap)) ? null : Number(event.blink_gap),
-      );
+      const gaps = events.map((event) => {
+        const saved = event.blink_gap == null || Number.isNaN(Number(event.blink_gap)) ? null : Number(event.blink_gap);
+        const at = new Date(event.time).getTime();
+        return shownGapAt(saved, at);
+      });
       const hasBlinks = gaps.some((gap) => gap != null);
       setFrameMode(chartFrame, "ready");
-      chart = lineChart(chartCanvas, chart, labels, scores, "#1c4d38", "Posture score", 100);
+      chart = lineChart(chartCanvas, chart, labels, scores, "#1b1b1b", "Posture score", 100);
       if (!hasBlinks) {
         if (blinkChart) {
           blinkChart.destroy();
@@ -717,7 +701,7 @@
       const peak = Math.max(10, ...gaps.filter((gap) => gap != null));
       const yMax = Math.ceil(peak);
       setFrameMode(blinkFrame, "ready");
-      blinkChart = lineChart(blinkCanvas, blinkChart, labels, gaps, "#8a4b2f", "Seconds since blink", yMax);
+      blinkChart = lineChart(blinkCanvas, blinkChart, labels, gaps, "#a33b24", "Seconds since blink", yMax);
       return true;
     }
 
@@ -834,14 +818,17 @@
         const live = await liveRes.json();
         const events = Array.isArray(live.events) ? live.events : [];
         renderSummary(summaryFromEvents(events));
-        renderBlinks(events);
         const last = events.length ? events[events.length - 1] : null;
-        const notes = [];
-        if (last && last.blink_gap != null && Number(last.blink_gap) >= 5) notes.push("Blink");
-        if (last && ((last.posture != null && last.posture <= 60) || last.label === "slouching" || last.label === "leaning_forward")) {
-          notes.push("Sit up taller");
+        postureNeedsSit = Boolean(
+          last && ((last.posture != null && last.posture <= 60) || last.label === "slouching" || last.label === "leaning_forward"),
+        );
+        renderBlinks(events);
+        if (!blinkWatch.marks.length && !blinkWatch.holding) {
+          const notes = [];
+          if (last && last.blink_gap != null && Number(last.blink_gap) >= 5) notes.push("Blink");
+          if (postureNeedsSit) notes.push("Sit up taller");
+          if (last) showReminder(notes);
         }
-        if (last) showReminder(notes);
         const chartOk = renderChart(events);
         if (!chartOk) {
           setChartMode("empty");
@@ -865,7 +852,6 @@
     document.querySelector("#refresh").addEventListener("click", () => load());
 
     const footageButton = document.querySelector("#footage");
-    const footageStatus = document.querySelector("#footage-status");
     const footageError = document.querySelector("#footage-error");
     const FRAME_W = 96;
     const FRAME_H = 72;
@@ -923,16 +909,242 @@
 
     function setFootage(collecting, error) {
       footageCollecting = collecting;
-      footageButton.textContent = collecting ? "Collecting footage" : "Not collecting footage";
+      footageButton.textContent = collecting ? "Stop camera" : "Start camera";
       footageButton.setAttribute("aria-pressed", collecting ? "true" : "false");
       footageButton.disabled = false;
       footageError.hidden = !error;
       footageError.textContent = error || "";
     }
 
-    function showBoard(text) {
-      footageStatus.hidden = !text;
-      footageStatus.textContent = text || "";
+    const BLINK_SHUT = 0.5;
+    const BLINK_HARD_SHUT = 0.75;
+    const BLINK_REFRACTORY_MS = 400;
+    const VISION_MODULE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/+esm";
+    const WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
+    const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+    let blinkWatch = { track: { armed: true, shutFrames: 0, lastFireAt: null }, holding: false, frozenGap: null, marks: [] };
+    let previousBoardGap = null;
+    let postureNeedsSit = false;
+    let faceBlink = null;
+    let faceBlinkLoad = null;
+    let faceBlinkFailedAt = 0;
+    let blinkTimer = 0;
+    let clockTimer = 0;
+    let serialChain = Promise.resolve();
+    let blinkSendQueued = false;
+
+    function trackBlink(track, score, now) {
+      if (score < BLINK_SHUT) return { track: { armed: true, shutFrames: 0, lastFireAt: track.lastFireAt }, blinked: false };
+      const shutFrames = track.shutFrames + 1;
+      const cooled = track.lastFireAt === null || now - track.lastFireAt >= BLINK_REFRACTORY_MS;
+      const confirmed = score >= BLINK_HARD_SHUT || shutFrames >= 2;
+      if (track.armed && cooled && confirmed) {
+        return { track: { armed: false, shutFrames: shutFrames, lastFireAt: now }, blinked: true };
+      }
+      return { track: { armed: track.armed, shutFrames: shutFrames, lastFireAt: track.lastFireAt }, blinked: false };
+    }
+
+    function blinkGapNow(now) {
+      if (blinkWatch.holding && blinkWatch.frozenGap != null) return blinkWatch.frozenGap;
+      if (!blinkWatch.marks.length) return null;
+      return Math.max(0, (now - blinkWatch.marks[blinkWatch.marks.length - 1]) / 1000);
+    }
+
+    function blinkRateNow(now) {
+      let count = 0;
+      for (let i = 0; i < blinkWatch.marks.length; i += 1) {
+        if (now - blinkWatch.marks[i] <= 60000) count += 1;
+      }
+      return count;
+    }
+
+    function paintBlinkClock() {
+      const now = Date.now();
+      const gap = blinkGapNow(now);
+      if (gap == null) return;
+      const gapEl = document.querySelector("#blink-gap");
+      const rateEl = document.querySelector("#blink-rate");
+      if (gapEl) gapEl.textContent = gap.toFixed(1) + " s";
+      if (rateEl) rateEl.textContent = String(blinkRateNow(now));
+      const notes = [];
+      if (!blinkWatch.holding && gap >= 5) notes.push("Blink");
+      if (postureNeedsSit) notes.push("Sit up taller");
+      showReminder(notes);
+    }
+
+    function takeBoardGap(gapSeconds, now) {
+      if (!Number.isFinite(gapSeconds) || gapSeconds < 0) return;
+      const dropped = previousBoardGap == null || gapSeconds + 0.4 < previousBoardGap;
+      const implied = now - gapSeconds * 1000;
+      const last = blinkWatch.marks.length ? blinkWatch.marks[blinkWatch.marks.length - 1] : null;
+      const newer = last == null || implied > last + 250;
+      previousBoardGap = gapSeconds;
+      if (!dropped || !newer || blinkWatch.holding) return;
+      blinkWatch.marks.push(implied);
+      if (blinkWatch.marks.length > 180) blinkWatch.marks = blinkWatch.marks.slice(-180);
+    }
+
+    function shownGapAt(saved, at) {
+      const board = saved == null || Number.isNaN(Number(saved)) ? null : Number(saved);
+      let last = null;
+      for (let i = 0; i < blinkWatch.marks.length; i += 1) {
+        if (blinkWatch.marks[i] <= at) last = blinkWatch.marks[i];
+      }
+      if (last == null) return board;
+      const local = Math.max(0, (at - last) / 1000);
+      if (board == null) return local;
+      return Math.min(board, local);
+    }
+
+    function watchSample(score, faceVisible, now) {
+      if (!faceVisible) return false;
+      const step = trackBlink(blinkWatch.track, score, now);
+      blinkWatch.track = step.track;
+      if (step.blinked) {
+        blinkWatch.frozenGap = blinkWatch.marks.length
+          ? Math.max(0, (now - blinkWatch.marks[blinkWatch.marks.length - 1]) / 1000)
+          : 0;
+        blinkWatch.holding = true;
+        return false;
+      }
+      if (blinkWatch.holding && score < BLINK_SHUT) {
+        blinkWatch.holding = false;
+        blinkWatch.frozenGap = null;
+        blinkWatch.marks.push(now);
+        if (blinkWatch.marks.length > 180) blinkWatch.marks = blinkWatch.marks.slice(-180);
+        return true;
+      }
+      return false;
+    }
+
+    function closureScore(result) {
+      const blend = result.faceBlendshapes && result.faceBlendshapes[0];
+      const categories = blend && blend.categories;
+      if (!result.faceLandmarks || !result.faceLandmarks.length || !categories || !categories.length) {
+        return { score: 0, faceVisible: false };
+      }
+      function scoreOf(name) {
+        for (let i = 0; i < categories.length; i += 1) {
+          if (categories[i].categoryName === name) return categories[i].score || 0;
+        }
+        return 0;
+      }
+      return { score: (scoreOf("eyeBlinkLeft") + scoreOf("eyeBlinkRight")) / 2, faceVisible: true };
+    }
+
+    async function createLandmarker(vision, delegate) {
+      const fileset = await vision.FilesetResolver.forVisionTasks(WASM_BASE);
+      return vision.FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: MODEL_URL, delegate: delegate },
+        runningMode: "VIDEO",
+        numFaces: 1,
+        outputFaceBlendshapes: true,
+        minFaceDetectionConfidence: 0.4,
+        minFacePresenceConfidence: 0.4,
+        minTrackingConfidence: 0.4,
+      });
+    }
+
+    function loadFaceBlink() {
+      if (faceBlink || faceBlinkLoad) return faceBlinkLoad || Promise.resolve(faceBlink);
+      faceBlinkLoad = (async () => {
+        const vision = await import(VISION_MODULE);
+        let landmarker;
+        try {
+          landmarker = await createLandmarker(vision, "GPU");
+        } catch (err) {
+          landmarker = await createLandmarker(vision, "CPU");
+        }
+        let lastTimestamp = -1;
+        faceBlink = {
+          sample(video, nowMs) {
+            const timestamp = Math.max(lastTimestamp + 1, Math.round(nowMs));
+            lastTimestamp = timestamp;
+            return closureScore(landmarker.detectForVideo(video, timestamp));
+          },
+        };
+        return faceBlink;
+      })().catch((err) => {
+        faceBlinkLoad = null;
+        faceBlinkFailedAt = Date.now();
+        throw err;
+      });
+      return faceBlinkLoad;
+    }
+
+    function resetBlinkWatch() {
+      blinkWatch = { track: { armed: true, shutFrames: 0, lastFireAt: null }, holding: false, frozenGap: null, marks: [] };
+      previousBoardGap = null;
+    }
+
+    function stopBlinkWatch() {
+      window.clearInterval(blinkTimer);
+      window.clearInterval(clockTimer);
+      blinkTimer = 0;
+      clockTimer = 0;
+      resetBlinkWatch();
+    }
+
+    function startBlinkWatch(video) {
+      stopBlinkWatch();
+      loadFaceBlink().catch(() => {});
+      blinkTimer = window.setInterval(() => {
+        if (footageStop) return;
+        if (!faceBlink) {
+          if (!faceBlinkLoad && Date.now() - faceBlinkFailedAt > 3000) loadFaceBlink().catch(() => {});
+          return;
+        }
+        if (video.readyState < 2) return;
+        let sample;
+        try {
+          sample = faceBlink.sample(video, performance.now());
+        } catch (err) {
+          return;
+        }
+        const wasHolding = blinkWatch.holding;
+        if (watchSample(sample.score, sample.faceVisible, Date.now())) {
+          paintBlinkClock();
+          queueBoardBlink();
+        } else if (blinkWatch.holding !== wasHolding) {
+          paintBlinkClock();
+        }
+      }, 50);
+      clockTimer = window.setInterval(paintBlinkClock, 250);
+    }
+
+    function writeExclusive(work) {
+      let release = function () {};
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      const previous = serialChain;
+      serialChain = gate;
+      return previous.then(async () => {
+        try {
+          await work();
+        } finally {
+          release();
+        }
+      });
+    }
+
+    let blinkPending = false;
+
+    function flushBoardBlink() {
+      if (!blinkPending || blinkSendQueued || !footageWriter) return;
+      blinkPending = false;
+      blinkSendQueued = true;
+      writeExclusive(() => footageWriter.write(new TextEncoder().encode("blink\n")))
+        .catch(() => {})
+        .finally(() => {
+          blinkSendQueued = false;
+          if (blinkPending) flushBoardBlink();
+        });
+    }
+
+    function queueBoardBlink() {
+      blinkPending = true;
+      flushBoardBlink();
     }
 
     function noteDevice(id) {
@@ -959,7 +1171,9 @@
       if (text === "ready" || text === "idle" || text === "ok" || text.startsWith("device ")) boardReady = true;
       if (text === "ready" && okWaiter && lastPacket && footageWriter && !resentWhileWaiting) {
         resentWhileWaiting = true;
-        footageWriter.write(lastPacket).catch(() => {});
+        writeExclusive(async () => {
+          if (lastPacket) await footageWriter.write(lastPacket);
+        }).catch(() => {});
       }
       if (text === "ok" && okWaiter) okWaiter();
       else if (text.startsWith("device ")) noteDevice(text.slice(7));
@@ -973,36 +1187,26 @@
         const rate = text.match(/(?:^|\s)rate=([^\s]+)/);
         const posture = text.match(/(?:^|\s)posture=([^\s]+)/);
         const head = text.match(/(?:^|\s)head=([^\s]+)/);
-        const gapEl = document.querySelector("#blink-gap");
-        const rateEl = document.querySelector("#blink-rate");
-        if (gapEl) gapEl.textContent = gap ? gap[1] + " s" : "—";
-        if (rateEl) rateEl.textContent = rate ? rate[1] : "—";
-        const notes = [];
-        if (gap && Number(gap[1]) >= 5) notes.push("Blink");
-        if ((posture && Number(posture[1]) <= 60) || (head && head[1] === "forward")) notes.push("Sit up taller");
-        showReminder(notes);
-      }
-      else if (text.startsWith("note ")) showBoard(text.slice(5).trim());
-      else if (
-        text &&
-        text !== "ok" &&
-        text !== "idle" &&
-        text !== "ready" &&
-        text !== "saved" &&
-        text !== "unsaved" &&
-        !text.startsWith("device ") &&
-        !text.startsWith("error ") &&
-        !text.startsWith("score ") &&
-        !text.startsWith("psram ")
-      ) {
-        showBoard(text);
+        postureNeedsSit = Boolean((posture && Number(posture[1]) <= 60) || (head && head[1] === "forward"));
+        if (gap) takeBoardGap(Number(gap[1]), Date.now());
+        if (blinkGapNow(Date.now()) == null) {
+          const gapEl = document.querySelector("#blink-gap");
+          const rateEl = document.querySelector("#blink-rate");
+          if (gapEl) gapEl.textContent = gap ? gap[1] + " s" : "—";
+          if (rateEl) rateEl.textContent = rate ? rate[1] : "—";
+          const notes = [];
+          if (gap && Number(gap[1]) >= 5) notes.push("Blink");
+          if (postureNeedsSit) notes.push("Sit up taller");
+          showReminder(notes);
+        } else {
+          paintBlinkClock();
+        }
       }
     }
 
     async function reopenBoard() {
       if (reopenStarted || footageStop || boardReady || !footagePort) return;
       reopenStarted = true;
-      showBoard("The board restarted. Listening again…");
       try {
         try { if (footageReader) await footageReader.cancel(); } catch (err) {}
         try { if (footageWriter) footageWriter.releaseLock(); } catch (err) {}
@@ -1164,6 +1368,7 @@
       footageWriter = null;
       footageReader = null;
       footagePort = null;
+      stopBlinkWatch();
       setFootage(false, "");
     }
 
@@ -1178,6 +1383,7 @@
         video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
       });
       footageButton.disabled = true;
+      footageButton.textContent = "Starting camera…";
       footageStop = false;
       boardReady = false;
       try {
@@ -1195,6 +1401,7 @@
         }
         video.srcObject = media;
         await video.play();
+        startBlinkWatch(video);
         footagePort = await portPromise;
         footageChosen = footagePort;
         await footagePort.open({ baudRate: 921600 });
@@ -1205,12 +1412,12 @@
         canvas.width = FRAME_W;
         canvas.height = FRAME_H;
         setFootage(true, "");
-        showBoard("Waiting for the ESP32…");
+        flushBoardBlink();
         const bootStart = performance.now();
         while (!boardReady) {
           if (footageStop) return;
           if (performance.now() - bootStart > 20000) {
-            const heard = sawBytes ? "The port sent bytes, but not a Perch line." : "The ESP32 sent nothing.";
+            const heard = sawBytes ? "The port sent bytes, but not a board line." : "The ESP32 sent nothing.";
             throw new Error(heard + " Close the Arduino Serial Monitor, unplug the board, plug it back in, and choose the port that appears.");
           }
           await new Promise((resolve) => window.setTimeout(resolve, 50));
@@ -1231,9 +1438,11 @@
           const packet = encodeFrame(frame.t, frame.gray);
           lastPacket = packet;
           const pending = waitForOk();
-          for (let offset = 0; offset < packet.length; offset += 512) {
-            await footageWriter.write(packet.subarray(offset, Math.min(packet.length, offset + 512)));
-          }
+          await writeExclusive(async () => {
+            for (let offset = 0; offset < packet.length; offset += 512) {
+              await footageWriter.write(packet.subarray(offset, Math.min(packet.length, offset + 512)));
+            }
+          });
           await pending;
           if (countSheetOk) sheetCount += 1;
           else countSheetOk = true;
@@ -1242,6 +1451,7 @@
           const scoringStarted = performance.now();
           while (!idleLatched) {
             if (footageStop) return;
+            flushBoardBlink();
             rememberFrame();
             if (performance.now() - scoringStarted > 45000) {
               throw new Error("The ESP32 did not answer. It started a score and never finished. Last line: " + (lastLine || "none") + ".");

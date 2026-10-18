@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useSyncExternalStore, type ReactNode } from "react";
-import { BrandMark } from "@/components/brand-mark";
 import { DEVICE_STORAGE_KEY, normalizeDeviceId } from "@/lib/device-id";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +35,7 @@ function NavLink({ href, current, children }: { href: string; current: boolean; 
       href={href}
       aria-current={current ? "page" : undefined}
       className={cn(
-        "rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         current ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-card hover:text-foreground",
       )}
     >
@@ -53,12 +52,11 @@ export function SiteNav({ current }: { current?: "device" | "camera" | "leaderbo
     <header className="flex flex-wrap items-center justify-between gap-4">
       <Link
         href="/"
-        className="flex items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+        className="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
       >
-        <BrandMark />
-        <span className="font-heading text-2xl leading-none text-foreground">Perch</span>
+        <span className="text-lg font-semibold leading-none text-foreground">no hunch club</span>
       </Link>
-      <nav aria-label="Primary" className="flex flex-wrap items-center gap-1 rounded-full bg-secondary/80 p-1">
+      <nav aria-label="Primary" className="flex flex-wrap items-center gap-1 border border-border bg-card p-1">
         <NavLink href={deviceHref} current={current === "device"}>
           Device
         </NavLink>

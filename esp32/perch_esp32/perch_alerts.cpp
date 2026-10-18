@@ -92,7 +92,9 @@ PerchStep perch_note_blink(PerchState state, uint32_t now) {
   push_blink(&state, now);
   state.phase = kPhaseLive;
   state.lastBlinkAt = now;
-  return PerchStep{state, kBuzzNone, "Blink."};
+  state.eyesShut = false;
+  state.heldGapMs = 0;
+  return PerchStep{state, kBuzzNone, ""};
 }
 
 PerchStep perch_apply(PerchState state, PerchReading reading, uint32_t now) {

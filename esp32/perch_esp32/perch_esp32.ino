@@ -113,6 +113,8 @@ static char lcdCache[2][17] = {"", ""};
 
 enum RxState { kWait0, kWait1, kHeader, kPayload, kCrc };
 static RxState rxState = kWait0;
+static char cmd[8];
+static uint8_t cmdLen = 0;
 static uint8_t header[6];
 static size_t rxGot = 0;
 static uint16_t rxCrc = 0xFFFF;
@@ -748,10 +750,30 @@ void acceptFrame() {
   scoreSheet();
 }
 
+void takeLaptopBlink() {
+  uint32_t now = millis();
+  PerchStep step = perch_note_blink(alerts, now);
+  alerts = step.state;
+  lastApplyMs = now;
+}
+
 void feed(uint8_t byte) {
   rxMarkMs = millis();
   if (rxState == kWait0) {
-    if (byte == kMagic0) rxState = kWait1;
+    if (byte == kMagic0) {
+      rxState = kWait1;
+      cmdLen = 0;
+      return;
+    }
+    if (byte == '\n' || byte == '\r') {
+      if (cmdLen == 5 && cmd[0] == 'b' && cmd[1] == 'l' && cmd[2] == 'i' && cmd[3] == 'n' && cmd[4] == 'k') {
+        takeLaptopBlink();
+      }
+      cmdLen = 0;
+      return;
+    }
+    if (byte >= 32 && byte < 127 && cmdLen < 7) cmd[cmdLen++] = (char)byte;
+    else cmdLen = 0;
     return;
   }
   if (rxState == kWait1) {
@@ -822,7 +844,7 @@ void hardwareHello() {
   lcd.begin(16, 2);
   lcd.clear();
   memset(lcdCache, 0, sizeof(lcdCache));
-  paintLcd("Perch", PERCH_DEVICE_ID);
+  paintLcd("no hunch club", PERCH_DEVICE_ID);
   const int pins[] = {kGreenPin, kYellowPin, kRedPin};
   for (int pin : pins) {
     digitalWrite(pin, HIGH);

@@ -28,6 +28,11 @@ int main() {
   if (during.buzz != kBuzzNone) return 4;
   PerchStep opened = perch_apply(during.state, PerchReading{true, 0, 80, false, false}, 13000);
   if (opened.state.eyesShut || opened.state.lastBlinkAt != 13000 || opened.state.blinksPerMinute != 1) return 5;
+  PerchStep heldShut = perch_apply(perch_initial(0), PerchReading{true, 0, 80, false, true, false}, 4000);
+  if (perch_tick(heldShut.state, 10000).buzz != kBuzzNone) return 6;
+  PerchStep laptop = perch_note_blink(heldShut.state, 7000);
+  if (laptop.state.eyesShut || laptop.state.heldGapMs != 0 || laptop.state.lastBlinkAt != 7000) return 7;
+  if (perch_tick(laptop.state, 12000).buzz != kBuzzBlink) return 8;
   printf("ok\n");
   return 0;
 }

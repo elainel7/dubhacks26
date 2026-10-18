@@ -10,8 +10,7 @@ export default function NotFound() {
     >
       <SiteNav />
       <section className="max-w-xl rounded-2xl bg-card px-6 py-8 ring-1 ring-foreground/10">
-        <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Perch</p>
-        <h1 className="mt-2 text-4xl text-foreground">That device id is not valid</h1>
+        <h1 className="text-3xl text-foreground">That device id is not valid</h1>
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">
           Use letters, numbers, hyphens, or underscores, then open the device again.
         </p>

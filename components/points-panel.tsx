@@ -75,7 +75,7 @@ function PointsBody({ points }: { points: PointsSnapshot }) {
     <>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]">
         <article className="rounded-2xl bg-card px-5 py-5 ring-1 ring-foreground/10">
-          <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Level {points.level.level}</p>
+          <p className="text-sm font-medium text-muted-foreground">Level {points.level.level}</p>
           <h3 className="mt-1 text-4xl text-foreground">{points.level.title}</h3>
           <p className="mt-2 font-heading text-5xl tabular-nums text-foreground">{points.total_points}</p>
           <p className="text-sm text-muted-foreground">points over the last 7 days</p>
@@ -190,7 +190,6 @@ export function PointsPanel({ deviceId }: { deviceId: string }) {
     <section className="flex flex-col gap-3" aria-labelledby="points-title">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Sit straighter</p>
           <h2 id="points-title" className="text-3xl text-foreground">
             Points
           </h2>

@@ -33,11 +33,8 @@ export function FootageToggle() {
         className="h-11 px-4"
         onClick={() => void (footage.collecting ? stopFootage() : startFootage())}
       >
-        {footage.collecting ? "Collecting footage" : "Not collecting footage"}
+        {footage.starting ? "Starting camera…" : footage.collecting ? "Stop camera" : "Start camera"}
       </Button>
-      {footage.boardLine ? (
-        <p className="max-w-sm text-sm text-muted-foreground">{footage.boardLine}</p>
-      ) : null}
       {footage.error ? (
         <p role="alert" className="max-w-sm text-sm font-medium text-bad">
           {footage.error}

@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { FootageToggle } from "@/components/footage-toggle";
 import { getFootageServerSnapshot, getFootageSnapshot, subscribeFootage } from "@/components/footage-session";
+import { shownGapAt } from "@/vision/blink-track";
 import { rememberDevice } from "@/components/site-nav";
 
 type LiveEvent = {
@@ -175,7 +176,9 @@ function SeriesChart({
 export function DeviceChart({ deviceId }: { deviceId: string }) {
   const [events, setEvents] = useState<LiveEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const blink = useSyncExternalStore(subscribeFootage, getFootageSnapshot, getFootageServerSnapshot).liveScore;
+  const footage = useSyncExternalStore(subscribeFootage, getFootageSnapshot, getFootageServerSnapshot);
+  const blink = footage.liveScore;
+  const blinkLive = footage.blink;
 
   useEffect(() => {
     rememberDevice(deviceId);
@@ -212,14 +215,21 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
 
   const summary = events ? summarize(events) : null;
   const savedBlink = [...(events ?? [])].reverse().find((event) => event.blink_gap != null || event.blinks_per_minute != null);
-  const blinkGap = blink && Number.isFinite(blink.gap) ? blink.gap : savedBlink?.blink_gap;
-  const blinkRate = blink && Number.isFinite(blink.rate) ? blink.rate : savedBlink?.blinks_per_minute;
-  const blinkGaps = (events ?? []).map((event) => (typeof event.blink_gap === "number" ? event.blink_gap : null));
+  const blinkGap = blinkLive ? blinkLive.gap : blink && Number.isFinite(blink.gap) ? blink.gap : savedBlink?.blink_gap;
+  const blinkRate = blinkLive
+    ? blinkLive.rate
+    : blink && Number.isFinite(blink.rate)
+      ? blink.rate
+      : savedBlink?.blinks_per_minute;
+  const blinkMarks = blinkLive?.marks ?? [];
+  const blinkGaps = (events ?? []).map((event) =>
+    shownGapAt(blinkMarks, typeof event.blink_gap === "number" ? event.blink_gap : null, new Date(event.time).getTime()),
+  );
   const hasBlinks = blinkGaps.some((gap) => gap != null);
   const blinkMax = hasBlinks ? Math.max(10, ...blinkGaps.filter((gap): gap is number => gap != null)) : 10;
   const blinkTop = Math.ceil(blinkMax);
   const latest = events?.at(-1);
-  const remindBlink = typeof blinkGap === "number" && blinkGap >= 5;
+  const remindBlink = !blinkLive?.holding && typeof blinkGap === "number" && blinkGap >= 5;
   const remindPosture =
     latest != null &&
     ((latest.posture != null && latest.posture <= 60) || latest.label === "slouching" || latest.label === "leaning_forward");
@@ -238,10 +248,10 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
     <div className="flex flex-col gap-6">
       <div className="flex max-w-xl flex-col gap-4">
         <div>
-          <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Device id</p>
-          <h1 className="mt-1 text-4xl break-all text-foreground sm:text-5xl">{deviceId}</h1>
+          <p className="text-sm font-medium text-muted-foreground">Device id</p>
+          <h1 className="mt-1 text-3xl break-all text-foreground sm:text-4xl">{deviceId}</h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-            Two graphs for the last 10 minutes. Each score is two small frames so it can finish inside five seconds.
+            Posture comes from the board. Blinks are counted on this computer, so the timer resets when your eyes open.
           </p>
           <p
             className={`font-heading text-4xl tracking-tight ${
@@ -299,7 +309,7 @@ export function DeviceChart({ deviceId }: { deviceId: string }) {
               <p className="mt-2 font-heading text-4xl tabular-nums text-foreground">
                 {typeof blinkGap === "number" ? `${blinkGap.toFixed(1)} s` : "—"}
               </p>
-              <p className="mt-1 text-sm text-muted-foreground">Over 5 seconds is the fast beep. The board screen does not show this.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Resets when your eyes open. Over 5 seconds is the fast beep.</p>
             </article>
             <article className="rounded-2xl bg-card px-5 py-4 ring-1 ring-foreground/10">
               <h2 className="text-sm font-semibold text-muted-foreground">Blinks this minute</h2>

@@ -174,7 +174,9 @@ export function parseEspLine(line: string): EspLine {
 }
 
 export type EspLink = {
-  sendFrame: (timestampMs: number, gray: Uint8Array) => Promise<void>;
+  sendFrame: (timestampMs: number, gray: Uint8Array, whileScoring?: () => void) => Promise<void>;
+  /** Tell the board the lids just opened, so its stare clock matches the laptop. */
+  noteBlink: () => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -190,6 +192,23 @@ export async function connectEsp32(
 
   const writer = port.writable.getWriter();
   const reader = port.readable.getReader();
+  let serialChain: Promise<void> = Promise.resolve();
+
+  function writeExclusive(work: () => Promise<void>) {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const previous = serialChain;
+    serialChain = gate;
+    return previous.then(async () => {
+      try {
+        await work();
+      } finally {
+        release();
+      }
+    });
+  }
   const decoder = new TextDecoder();
   let buffer = "";
   let stopped = false;
@@ -227,7 +246,9 @@ export async function connectEsp32(
     if (line.kind === "idle") idleLatched = true;
     if (line.kind === "ready" && waitingForOk && lastPacket && !resentWhileWaiting) {
       resentWhileWaiting = true;
-      void writer.write(lastPacket).catch(() => {
+      void writeExclusive(async () => {
+        if (lastPacket) await writer.write(lastPacket);
+      }).catch(() => {
         /* The port closed while the board was rebooting. */
       });
     }
@@ -303,9 +324,11 @@ export async function connectEsp32(
       waitingForOk = true;
       const pending = waitFor("ok", 40_000);
       try {
-        for (let offset = 0; offset < packet.length; offset += 512) {
-          await writer.write(packet.subarray(offset, Math.min(packet.length, offset + 512)));
-        }
+        await writeExclusive(async () => {
+          for (let offset = 0; offset < packet.length; offset += 512) {
+            await writer.write(packet.subarray(offset, Math.min(packet.length, offset + 512)));
+          }
+        });
       } catch (cause) {
         waitingForOk = false;
         failWaiters(cause instanceof Error ? cause : new Error("Could not write to the ESP32."));
@@ -329,6 +352,10 @@ export async function connectEsp32(
         await new Promise((resolve) => setTimeout(resolve, 40));
       }
       idleLatched = false;
+    },
+    noteBlink() {
+      if (stopped) return Promise.resolve();
+      return writeExclusive(() => writer.write(new TextEncoder().encode("blink\n"))).then(() => undefined);
     },
     async close() {
       stopped = true;

@@ -3,6 +3,15 @@
 import { rememberDevice } from "@/components/site-nav";
 import { normalizeDeviceId } from "@/lib/device-id";
 import { serialAvailable } from "@/lib/serial";
+import {
+  blinkGapSeconds,
+  blinksInLastMinute,
+  initialBlinkWatch,
+  takeBoardGap,
+  watchBlink,
+  type BlinkWatch,
+} from "@/vision/blink-track";
+import { loadFaceBlink, type FaceBlink } from "@/vision/face-blink";
 import { cameraCrop, connectEsp32, FRAME_H, FRAME_W, pickSheetFrames, type EspLink } from "@/vision/esp32-link";
 
 export type LiveScore = {
@@ -15,22 +24,29 @@ export type LiveScore = {
   seq: number;
 };
 
+export type BlinkSnapshot = {
+  gap: number;
+  rate: number;
+  holding: boolean;
+  marks: number[];
+};
+
 export type FootageState = {
   collecting: boolean;
   starting: boolean;
   error: string | null;
-  boardLine: string | null;
   deviceId: string | null;
   liveScore: LiveScore | null;
+  blink: BlinkSnapshot | null;
 };
 
 const serverSnapshot: FootageState = {
   collecting: false,
   starting: false,
   error: null,
-  boardLine: null,
   deviceId: null,
   liveScore: null,
+  blink: null,
 };
 
 let state: FootageState = serverSnapshot;
@@ -38,10 +54,42 @@ const listeners = new Set<() => void>();
 let link: EspLink | null = null;
 let stream: MediaStream | null = null;
 let stopRequested = false;
+let blinkWatch: BlinkWatch = initialBlinkWatch();
+let previousBoardGap: number | null = null;
+let faceBlink: FaceBlink | null = null;
+let faceBlinkLoad: Promise<FaceBlink> | null = null;
+let blinkTimer = 0;
+let clockTimer = 0;
 
 function emit(next: FootageState) {
   state = next;
   listeners.forEach((listener) => listener());
+}
+
+function blinkSnapshot(now: number): BlinkSnapshot | null {
+  const gap = blinkGapSeconds(blinkWatch, now);
+  if (gap == null) return state.blink;
+  return {
+    gap,
+    rate: blinksInLastMinute(blinkWatch.marks, now),
+    holding: blinkWatch.holding,
+    marks: blinkWatch.marks,
+  };
+}
+
+function publishBlink(now = Date.now()) {
+  const blink = blinkSnapshot(now);
+  if (!blink) return;
+  if (
+    state.blink &&
+    state.blink.gap === blink.gap &&
+    state.blink.rate === blink.rate &&
+    state.blink.holding === blink.holding &&
+    state.blink.marks === blink.marks
+  ) {
+    return;
+  }
+  emit({ ...state, blink });
 }
 
 export function subscribeFootage(listener: () => void) {
@@ -187,6 +235,7 @@ export async function startFootage() {
     const { video } = hiddenElements();
     video.srcObject = media;
     await video.play();
+    startBlinkWatch(video);
     link = await connectEsp32(async () => {
       const port = await portPromise;
       rememberedPort = port;
@@ -197,17 +246,21 @@ export async function startFootage() {
         if (!id) return;
         rememberDevice(id);
         emit({ ...state, deviceId: id });
-      } else if ((line.kind === "note" || line.kind === "other") && line.text) {
-        emit({ ...state, boardLine: line.text });
       } else if (line.kind === "score") {
+        const taken = takeBoardGap(blinkWatch, line.gap, Date.now(), previousBoardGap);
+        blinkWatch = taken.watch;
+        previousBoardGap = taken.previousBoardGap;
+        const now = Date.now();
+        const blink = blinkSnapshot(now);
         emit({
           ...state,
+          blink,
           liveScore: {
             face: line.face,
             posture: line.posture,
             head: line.head,
-            gap: line.gap,
-            rate: line.rate,
+            gap: blink?.gap ?? line.gap,
+            rate: blink ? Math.max(line.rate, blink.rate) : line.rate,
             saved: false,
             seq: (state.liveScore?.seq ?? 0) + 1,
           },
@@ -235,8 +288,72 @@ export async function startFootage() {
   }
 }
 
+function stopBlinkWatch() {
+  window.clearInterval(blinkTimer);
+  window.clearInterval(clockTimer);
+  blinkTimer = 0;
+  clockTimer = 0;
+}
+
+function ensureFaceBlink() {
+  if (faceBlink || faceBlinkLoad) return faceBlinkLoad;
+  faceBlinkLoad = loadFaceBlink()
+    .then((detector) => {
+      faceBlink = detector;
+      return detector;
+    })
+    .catch((cause: unknown) => {
+      faceBlinkLoad = null;
+      throw cause;
+    });
+  return faceBlinkLoad;
+}
+
+function startBlinkWatch(video: HTMLVideoElement) {
+  stopBlinkWatch();
+  blinkWatch = initialBlinkWatch();
+  previousBoardGap = null;
+  void ensureFaceBlink()?.catch(() => {
+    /* The next camera start tries the landmarker again. Frames still go to the board. */
+  });
+  let faceBlinkFailedAt = 0;
+  blinkTimer = window.setInterval(() => {
+    if (stopRequested) return;
+    if (!faceBlink) {
+      if (!faceBlinkLoad && Date.now() - faceBlinkFailedAt > 3000) {
+        void ensureFaceBlink()?.catch(() => {
+          faceBlinkFailedAt = Date.now();
+        });
+      }
+      return;
+    }
+    if (video.readyState < 2) return;
+    let sample;
+    try {
+      sample = faceBlink.sample(video, performance.now());
+    } catch {
+      return;
+    }
+    const now = Date.now();
+    const step = watchBlink(blinkWatch, sample.score, sample.faceVisible, now);
+    blinkWatch = step.watch;
+    if (step.committed) {
+      publishBlink(now);
+      void link?.noteBlink().catch(() => {
+        /* The board catches up on the next open. The page clock already reset. */
+      });
+    } else if (step.watch.holding !== (state.blink?.holding ?? false)) {
+      publishBlink(now);
+    }
+  }, 50);
+  clockTimer = window.setInterval(() => publishBlink(), 250);
+}
+
 export async function stopFootage() {
   stopRequested = true;
+  stopBlinkWatch();
+  blinkWatch = initialBlinkWatch();
+  previousBoardGap = null;
   stream?.getTracks().forEach((track) => track.stop());
   stream = null;
   const current = link;
@@ -244,5 +361,5 @@ export async function stopFootage() {
   const video = document.getElementById("perch-footage");
   if (video instanceof HTMLVideoElement) video.srcObject = null;
   await current?.close();
-  emit({ ...state, collecting: false, starting: false });
+  emit({ ...state, collecting: false, starting: false, blink: null });
 }

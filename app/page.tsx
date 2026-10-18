@@ -25,20 +25,16 @@ export default function HomePage() {
       <SiteNav />
       <section className="grid items-center gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)] lg:gap-14">
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">Perch</p>
-          <h1 className="max-w-xl text-4xl leading-[1.05] text-foreground sm:text-5xl md:text-6xl">
-            No more hunching.
-          </h1>
+          <h1 className="max-w-xl text-3xl text-foreground sm:text-4xl">Posture and blinks</h1>
           <p className="max-w-xl text-lg leading-relaxed text-muted-foreground">
-            Perch watches the person at the desk and keeps a simple record: how much of the time they sat
-            upright, and what went wrong when they didn&apos;t.
+            Posture and blinks for one device. The computer counts blinks. The board scores how you&apos;re sitting.
           </p>
         </div>
         <DeviceIdForm />
       </section>
       <ul className="grid gap-3 sm:grid-cols-3">
         {highlights.map((item) => (
-          <li key={item.title} className="rounded-2xl bg-card/80 px-4 py-4 ring-1 ring-foreground/10">
+          <li key={item.title} className="border border-border bg-card px-4 py-4">
             <p className="font-heading text-xl text-foreground">{item.title}</p>
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{item.body}</p>
           </li>
